@@ -295,9 +295,10 @@ class DynamicGenerator(nn.Module):
         feat = self.source_encoder(src)
 
         # 2. 處理噪聲
-        # if noise.dim() == 2: noise = noise.view(noise.size(0), noise.size(1), 1, 1)
-        # noise_exp = noise.expand(-1, -1, self.bottleneck_size, self.bottleneck_size)
-        noise_exp = noise
+        if noise.dim() == 2: 
+            noise = noise.view(noise.size(0), noise.size(1), 1, 1)
+        noise_exp = noise.expand(-1, -1, feat.size(2), feat.size(3))
+        
         # 3. 合併
         combined = torch.cat((feat, noise_exp), dim=1)
 
