@@ -60,19 +60,35 @@ research_v2/
 ## 🏃 執行訓練 (Training)
 
 所有的超參數（如 `lambda_l1`, `n_critic`, `batch_size`, `num_epochs`）皆已移至 `configs/default.yaml` 集中管理。
-若要開始訓練，請在 VS Code 終端機內執行：
+若要開始訓練，請在遠端 VS Code 終端機內執行：
 
 ```bash
 python src/train.py \
     --config configs/default.yaml \
-    --src_font data/fonts/NotoSansTC.ttf \
+    --src_font data/fonts/NotoSansTC-Regular.ttf \
     --tgt_font data/fonts/kaiu.ttf \
-    --output_dir /content/drive/MyDrive/research_v2_runs/exp_01
+    --output_dir /content/drive/MyDrive/research_v2_runs/exp_01 \
+    --save_interval 10 \
+    --keep_checkpoints 3
 ```
-*(請自行將 `--src_font` 與 `--tgt_font` 替換為實際的字體路徑)*
+*(字體亦可替換為 `data/fonts/tegaki_zatsu.ttf`)*
 
-### 💡 輕量化儲存設計
-為節省 Google Drive 的儲存空間，訓練過程中**只會儲存推論用的 Generator 權重** (`G.state_dict()`)，捨棄了龐大的 Optimizer 與 Discriminator 狀態，可將單個 `.pth` 檔案縮小至少三分之二。
+### 💡 防硬碟爆滿與輕量化儲存設計
+1. **推論權重輕量化**：訓練過程中**只會儲存推論用的 Generator 權重** (`G.state_dict()`)，捨棄了龐大的 Optimizer 與 Discriminator 狀態，單個檔案僅約 15~25MB。
+2. **滾動保留 Checkpoints (`--keep_checkpoints 3`)**：自動刪除過舊的歷史輪次，硬碟最多只保留最新 3 份 checkpoints。
+3. **即時最新檔 (`G_latest.pth`)**：每輪儲存時自動更新覆蓋 `G_latest.pth`。
+
+---
+
+## 🔄 本地自動同步腳本 (Auto-Pull Daemon)
+
+若要在本機自動接收遠端產生的模型權重，免手動下載：
+1. 在本地端 VS Code 開啟一個本機 PowerShell 終端機。
+2. 執行自動拉取腳本：
+   ```powershell
+   .\scripts\auto_pull.ps1 -RemoteHost "colab" -RemoteDir "/content/drive/MyDrive/research_v2_runs/exp_01" -LocalDir "runs/exp_01"
+   ```
+3. 腳本會在背景每 60 秒自動透過 `scp` 抓取最新 `.pth` 權重至本地端！
 
 ---
 
