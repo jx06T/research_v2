@@ -16,7 +16,7 @@ lambda_gp: 10
 lr: 0.0004
 batch_size: 32
 betas: [0.0, 0.9]
-num_epochs: 900
+num_epochs: 600
 n_critic: 2
-missing_chars: ["e","w","p","m","t","R","G", "E", "Z", "I","D","M","b","u", "U", "3","5","7"]
+missing_chars: []
 
