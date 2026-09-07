@@ -13,7 +13,7 @@
 
 param(
     [string]$RemoteHost = "colab",
-    [string]$RemoteDir = "/content/drive/MyDrive/research_v2_runs/exp_01",
+    [string]$RemoteDir = "/content/drive/MyDrive/research_v2/runs",
     [string]$LocalDir = "runs/exp_01",
     [int]$IntervalSeconds = 60
 )

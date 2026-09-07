@@ -26,17 +26,17 @@ class DemoConfig:
 
 # 將模型路徑與對應的目標字體封裝在一起
 EXPERIMENTS = {
-    "ch_ta": {
-        "model_path": "Yu2Ta_ch/gan_G_n4_l1_50_l_5_20260414_162105_olaa.pth",
-        "target_font": "ttt/f/tegaki_zatsu.ttf"
+    "最新模型 (Epoch 900)": {
+        "model_path": "runs/exp_01/G_epoch_900.pth",
+        "target_font": "data/fonts/kaiu.ttf"
     },
-    "ch_ti": {
-        "model_path": "Yu2Ti_ch/gan_G_n4_l1_1_l_5_20260303_083050_9o6z.pth", 
-        "target_font": "ttt/f/kaiu.ttf"
-    },
+    "gan_G_n4_l1_1_l_5_20260303_083050_9o6z": {
+        "model_path": "runs/exp_00/gan_G_n4_l1_1_l_5_20260303_083050_9o6z.pth",
+        "target_font": "data/fonts/kaiu.ttf"
+    }
 }
 
-SOURCE_FONT_PATH = "ttt/f/NotoSansTC-Regular.ttf"
+SOURCE_FONT_PATH = "data/fonts/NotoSansTC-Regular.ttf"
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ==========================================
