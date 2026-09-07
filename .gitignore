@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# PyTorch checkpoints and training runs
+runs/
+*.pth
+*.pt
+temp_test.pth
+*.log
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+
+# VS Code / IDE
+.vscode/
+.idea/
+
+# Fonts: Only track the 3 specified fonts, ignore all other font files
+data/fonts/*
+!data/fonts/kaiu.ttf
+!data/fonts/NotoSansTC-Regular.ttf
+!data/fonts/tegaki_zatsu.ttf
