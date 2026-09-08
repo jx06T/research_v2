@@ -18,7 +18,7 @@ def get_args():
     parser.add_argument('--src_font', type=str, required=True)
     parser.add_argument('--tgt_font', type=str, required=True)
     parser.add_argument('--output_dir', type=str, default='./runs')
-    parser.add_argument('--save_interval', type=int, default=10)
+    parser.add_argument('--save_interval', type=int, default=100)
     return parser.parse_args()
 
 def main():
@@ -88,10 +88,16 @@ def main():
 
         # Save Checkpoint
         if (epoch + 1) % args.save_interval == 0 or epoch == config.num_epochs - 1:
+            # 1. 永遠覆寫最新版本 (供 demo_qt.py 或自動化下載使用)
             latest_path = os.path.join(args.output_dir, "G_latest.pth")
             torch.save(G.state_dict(), latest_path)
             
-            ckpt_path = os.path.join(args.output_dir, f"checkpoint_{logger.run_id}_latest.pth")
+            # 2. 儲存該輪次的獨立檔案 (歷史紀錄)
+            epoch_model_path = os.path.join(args.output_dir, f"G_epoch_{epoch+1}.pth")
+            torch.save(G.state_dict(), epoch_model_path)
+            
+            # 3. 儲存完整訓練狀態 (含 Optimizer 等)
+            ckpt_path = os.path.join(args.output_dir, f"checkpoint_{logger.run_id}_epoch_{epoch+1}.pth")
             torch.save({
                 'config': config.to_dict(),
                 'epoch': epoch,
