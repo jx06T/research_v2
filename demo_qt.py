@@ -7,7 +7,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                              QComboBox, QScrollArea, QCheckBox, QLayout)
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QTimer
 from PyQt6.QtGui import QImage, QPixmap
-from src.models.mm_legacy import DynamicGenerator
+from src.models.generator.dynamic_gen import DynamicGenerator
 
 # ==========================================
 # 1. 基礎配置 (更新 EXPERIMENTS 結構)
@@ -27,7 +27,7 @@ class DemoConfig:
 # 將模型路徑與對應的目標字體封裝在一起
 EXPERIMENTS = {
     "最新模型 (Epoch 900)": {
-        "model_path": "runs/exp_01/G_epoch_900.pth",
+        "model_path": "runs/exp_01/G_latest_3.pth",
         "target_font": "data/fonts/kaiu.ttf"
     },
     "gan_G_n4_l1_1_l_5_20260303_083050_9o6z": {

@@ -91,3 +91,4 @@ def test_specific_chars(G, dataset, config, epoch, chars_to_test=None, device="c
 
     plot_gan_results(src_batch, tgt_batch, fake_batch, chars_to_test, epoch, config, "Specific Test Characters")
     G.train()
+
