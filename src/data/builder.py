@@ -18,5 +18,6 @@ def build_dataloader(config, src_font_path, tgt_font_path):
         num_workers=num_workers,
         pin_memory=True
     )
+    print(f"DataLoader initialized with {num_workers} workers.")
     return dataset, dataloader
 
