@@ -9,7 +9,7 @@ import random
 class PairedFontDataset(Dataset):
     def __init__(self, font_path_a, font_path_b, config, num_samples=5000, invert=True):
         self.num_samples = num_samples
-        self.img_size = config['image_size']
+        self.img_size = config.image_size
         self.invert = invert
         self.cfg = config
 
@@ -31,7 +31,7 @@ class PairedFontDataset(Dataset):
         all_candidates = digits + upper + lower + char_string
 
         # 區分用於測試缺失字元的 missing_set 與實際參與訓練的 characters
-        self.missing_set = [c for c in all_candidates if c in config['missing_chars']]
+        self.missing_set = [c for c in all_candidates if c in config.missing_chars]
         self.characters = [c for c in all_candidates if c not in self.missing_set]
 
     def _render_char_to_tensor(self, char_str: str, font: ImageFont) -> torch.Tensor:
@@ -86,16 +86,16 @@ class PairedFontDataset(Dataset):
         img_b = 1.0 - self._render_char_to_tensor(char_str, self.font_b)
 
         params = transforms.RandomAffine.get_params(
-            degrees=(-self.cfg['aug_degrees'], self.cfg['aug_degrees']), 
-            translate=self.cfg['aug_translate'],
-            scale_ranges=self.cfg['aug_scale'], shears=None,
+            degrees=(-self.cfg.aug_degrees, self.cfg.aug_degrees), 
+            translate=self.cfg.aug_translate,
+            scale_ranges=self.cfg.aug_scale, shears=None,
             img_size=[self.img_size, self.img_size]
         )
 
         aug_a = TF.affine(img_a, *params, interpolation=transforms.InterpolationMode.BILINEAR, fill=0)
         aug_b = TF.affine(img_b, *params, interpolation=transforms.InterpolationMode.BILINEAR, fill=0)
 
-        if random.random() < self.cfg['aug_mask_prob']:
+        if random.random() < self.cfg.aug_mask_prob:
              mask_size = int(self.img_size * 0.4)
              mx = random.randint(0, self.img_size - mask_size)
              my = random.randint(0, self.img_size - mask_size)
