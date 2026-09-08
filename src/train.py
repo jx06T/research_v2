@@ -18,6 +18,7 @@ def get_args():
     parser.add_argument('--src_font', type=str, required=True)
     parser.add_argument('--tgt_font', type=str, required=True)
     parser.add_argument('--output_dir', type=str, default='./runs')
+    parser.add_argument('--checkpoint_dir', type=str, default='./runs_checkpoints')
     parser.add_argument('--save_interval', type=int, default=100)
     return parser.parse_args()
 
@@ -32,6 +33,7 @@ def main():
     
     # Logger
     logger = ExperimentLogger(config, output_dir=args.output_dir)
+    os.makedirs(args.checkpoint_dir, exist_ok=True)
 
     # Models
     G = DynamicGenerator(config).to(device)
@@ -97,8 +99,8 @@ def main():
             epoch_model_path = os.path.join(args.output_dir, f"G_{logger.run_id}_epoch_{epoch+1}.pth")
             torch.save(G.state_dict(), epoch_model_path)
             
-            # 3. 儲存完整訓練狀態 (含 Optimizer 等)
-            ckpt_path = os.path.join(args.output_dir, f"checkpoint_{logger.run_id}_epoch_{epoch+1}.pth")
+            # 3. 儲存完整訓練狀態 (含 Optimizer 等)，隔離到 checkpoint_dir 避免被下載
+            ckpt_path = os.path.join(args.checkpoint_dir, f"checkpoint_{logger.run_id}_epoch_{epoch+1}.pth")
             torch.save({
                 'config': config.to_dict(),
                 'epoch': epoch,
