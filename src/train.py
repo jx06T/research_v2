@@ -92,8 +92,9 @@ def main():
             latest_path = os.path.join(args.output_dir, "G_latest.pth")
             torch.save(G.state_dict(), latest_path)
             
-            # 2. 儲存該輪次的獨立檔案 (歷史紀錄)
-            epoch_model_path = os.path.join(args.output_dir, f"G_epoch_{epoch+1}.pth")
+            # 2. 儲存推論專用輕量檔 (僅包含 Generator 權重，檔案很小)
+            # 加上 run_id 避免不同實驗互相覆蓋
+            epoch_model_path = os.path.join(args.output_dir, f"G_{logger.run_id}_epoch_{epoch+1}.pth")
             torch.save(G.state_dict(), epoch_model_path)
             
             # 3. 儲存完整訓練狀態 (含 Optimizer 等)
