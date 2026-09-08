@@ -1,6 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 import numpy as np
+import matplotlib.font_manager as fm
 
 def plot_gan_results(source_imgs, target_imgs, fake_imgs, labels, epoch, config, title_suffix):
     source_imgs = source_imgs.detach().cpu()
@@ -18,25 +19,28 @@ def plot_gan_results(source_imgs, target_imgs, fake_imgs, labels, epoch, config,
                   f"n={config.bottleneck_size}, L1_w={config.lambda_l1}\n"
                   f"lr={config.lr}, bs={config.batch_size}")
 
+    # 使用我們自己的中文字體，解決 Matplotlib 顯示中文字元變方塊的問題
+    font_prop = fm.FontProperties(fname="data/fonts/NotoSansTC-Regular.ttf")
+
     for j in range(n_samples):
         lbl = labels[j].item() if isinstance(labels, torch.Tensor) else labels[j]
 
         ax_src = axes[0, j] if n_samples > 1 else axes[0]
         ax_src.imshow(source_imgs[j].squeeze(), cmap="gray")
-        ax_src.set_title(f"Source ({lbl})", fontsize=8)
+        ax_src.set_title(f"Source ({lbl})", fontsize=8, fontproperties=font_prop)
         ax_src.axis("off")
 
         ax_tgt = axes[1, j] if n_samples > 1 else axes[1]
         ax_tgt.imshow(target_imgs[j].squeeze(), cmap="gray")
-        ax_tgt.set_title(f"Target ({lbl})", fontsize=8)
+        ax_tgt.set_title(f"Target ({lbl})", fontsize=8, fontproperties=font_prop)
         ax_tgt.axis("off")
 
         ax_gen = axes[2, j] if n_samples > 1 else axes[2]
         ax_gen.imshow(fake_imgs[j].squeeze(), cmap="gray")
-        ax_gen.set_title("Generated", fontsize=8)
+        ax_gen.set_title("Generated", fontsize=8, fontproperties=font_prop)
         ax_gen.axis("off")
 
-    plt.suptitle(main_title)
+    plt.suptitle(main_title, fontproperties=font_prop)
     plt.tight_layout(rect=[0, 0.03, 1, 0.9])
     plt.show()
 
