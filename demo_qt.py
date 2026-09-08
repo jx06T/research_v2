@@ -1,4 +1,7 @@
 import sys
+import os
+import csv
+import glob
 import torch
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
@@ -14,6 +17,7 @@ from src.models.generator.dynamic_gen import DynamicGenerator
 # ==========================================
 class DemoConfig:
     def __init__(self):
+        # 這些將會在切換模型時被動態覆寫
         self.bottleneck_size = 4
         self.kernel_size = 4
         self.padding = 1
@@ -24,19 +28,47 @@ class DemoConfig:
         self.ngf = 64
         self.ndf = 64
 
-# 將模型路徑與對應的目標字體封裝在一起
-EXPERIMENTS = {
-    "最新模型 (Epoch 900)": {
-        "model_path": "runs/exp_01/G_latest_3.pth",
-        "target_font": "data/fonts/kaiu.ttf"
-    },
-    "gan_G_n4_l1_1_l_5_20260303_083050_9o6z": {
-        "model_path": "runs/exp_00/gan_G_n4_l1_1_l_5_20260303_083050_9o6z.pth",
-        "target_font": "data/fonts/kaiu.ttf"
-    }
-}
+# 動態加載模型清單
+EXPERIMENTS = {}
+try:
+    with open("model_registry.csv", "r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            arch_folder = row.get("arch_folder", "")
+            run_id = row.get("run_id", "")
+            exp_name = row.get("experiment", "")
+            
+            # 掃描此架構資料夾下所有符合該 run_id 的權重檔
+            search_path = os.path.join("runs", arch_folder, f"G_*{run_id}*.pth")
+            found_models = glob.glob(search_path)
+            
+            for model_path in found_models:
+                filename = os.path.basename(model_path)
+                display_name = f"[{exp_name}] {filename}"
+                EXPERIMENTS[display_name] = {
+                    "model_path": model_path,
+                    "target_font": row.get("tgt_font") if row.get("tgt_font") not in ["", "N/A", None] else "data/fonts/kaiu.ttf",
+                    "source_font": row.get("src_font") if row.get("src_font") not in ["", "N/A", None] else "data/fonts/NotoSansTC-Regular.ttf",
+                    "image_size": int(row.get("image_size", 64)) if str(row.get("image_size")).isdigit() else 64,
+                    "bottleneck_size": int(row.get("bottleneck_size", 4)) if str(row.get("bottleneck_size")).isdigit() else 4,
+                    "nz": int(row.get("nz", 256)) if str(row.get("nz")).isdigit() else 256,
+                    "nc": int(row.get("nc", 1)) if str(row.get("nc")).isdigit() else 1
+                }
+except Exception as e:
+    print(f"無法讀取 model_registry.csv 或尚無紀錄: {e}")
 
-SOURCE_FONT_PATH = "data/fonts/NotoSansTC-Regular.ttf"
+# 給予至少一個預設選項避免 UI 崩潰
+if not EXPERIMENTS:
+    EXPERIMENTS["Fallback (尚無歸檔模型)"] = {
+        "model_path": "runs/exp_01/G_latest_3.pth",
+        "target_font": "data/fonts/kaiu.ttf",
+        "source_font": "data/fonts/NotoSansTC-Regular.ttf",
+        "image_size": 64,
+        "bottleneck_size": 4,
+        "nz": 256,
+        "nc": 1
+    }
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 # ==========================================
@@ -120,7 +152,8 @@ class FontGenApp(QMainWindow):
         self.cfg = DemoConfig()
         self.current_model = None
         self.current_model_name = ""
-        self.current_gt_font_path = "" # 新增：追蹤當前應使用的 GT 字體
+        self.current_gt_font_path = ""
+        self.current_src_font_path = ""
         
         self.pixel_size = 32
         self.content_scale = 0.93
@@ -230,9 +263,16 @@ class FontGenApp(QMainWindow):
             print(f"Loading model: {name}...")
             config = EXPERIMENTS[name]
             
-            # 更新當前 GT 字體路徑
+            # 更新當前字體路徑
             self.current_gt_font_path = config["target_font"]
+            self.current_src_font_path = config["source_font"]
             self.current_model_name = name
+            
+            # 更新網路超參數
+            self.cfg.image_size = config["image_size"]
+            self.cfg.bottleneck_size = config["bottleneck_size"]
+            self.cfg.nz = config["nz"]
+            self.cfg.nc = config["nc"]
             
             # 初始化並加載模型權重
             self.current_model = DynamicGenerator(self.cfg).to(DEVICE)
@@ -282,8 +322,7 @@ class FontGenApp(QMainWindow):
             if cache_key in self.inference_cache:
                 s_px, f_px, g_px = self.inference_cache[cache_key]
             else:
-                src_t = self.render_char_tensor(char, SOURCE_FONT_PATH)
-                # 關鍵修改：使用當前配置的 GT 字體路徑
+                src_t = self.render_char_tensor(char, self.current_src_font_path)
                 gt_t = self.render_char_tensor(char, self.current_gt_font_path)
                 
                 with torch.no_grad():

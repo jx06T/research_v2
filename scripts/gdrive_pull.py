@@ -10,10 +10,11 @@ REGISTRY_FILE = "model_registry.csv"
 
 def parse_yaml(filepath):
     with open(filepath, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f)
+        # 因 config 中可能包含 !!python/tuple 等特定標籤，故需使用 UnsafeLoader
+        return yaml.load(f, Loader=yaml.UnsafeLoader)
 
 def update_registry(run_id, config, exp_name, arch_folder):
-    fieldnames = ['run_id', 'experiment', 'arch_folder', 'image_size', 'bottleneck_size', 'nc', 'nz', 'lambda_l1', 'batch_size']
+    fieldnames = ['run_id', 'experiment', 'arch_folder', 'image_size', 'bottleneck_size', 'nc', 'nz', 'lambda_l1', 'batch_size', 'src_font', 'tgt_font']
     
     file_exists = os.path.exists(REGISTRY_FILE)
     existing_runs = set()
@@ -40,8 +41,9 @@ def update_registry(run_id, config, exp_name, arch_folder):
             'bottleneck_size': config.get('bottleneck_size', 'N/A'),
             'nc': config.get('nc', 'N/A'),
             'nz': config.get('nz', 'N/A'),
-            'lambda_l1': config.get('lambda_l1', 'N/A'),
-            'batch_size': config.get('batch_size', 'N/A')
+            'batch_size': config.get('batch_size', 'N/A'),
+            'src_font': config.get('src_font', 'N/A'),
+            'tgt_font': config.get('tgt_font', 'N/A')
         })
     print(f"    [Registry] 已將 {run_id} 登錄至 {REGISTRY_FILE}")
 
@@ -51,8 +53,7 @@ def main():
 
     # 格式: {"實驗名稱": "Google Drive 資料夾 ID"}
     DRIVE_FOLDERS = {
-        "exp_1113_1": "1vRUke2DK7t9SbWZQUZgqRtzEsXXmSgMY", 
-        # 您可以在這裡加入不同帳號、不同實驗的資料夾 ID
+        'a3': '12h4SSeCxbwxWME9hbdJ_Yv1pCXk-UabZ'
     }
 
     print("啟動 Google Drive 智能歸檔與分類工具")
@@ -67,11 +68,17 @@ def main():
         os.makedirs(local_output, exist_ok=True)
         
         print(f"正在同步 [{exp_name}] (ID: {folder_id}) ...")
+        
+        # 1. 下載更新 (gdown 會自動略過已存在的檔案)
+        # 用 try-except 包起來，就算 gdown 因為病毒掃描大檔案失敗，我們也要繼續往下走
         try:
-            # 1. 下載更新 (gdown 會自動略過已存在的檔案)
             gdown.download_folder(id=folder_id, output=local_output, quiet=True, use_cookies=False)
             print(f"✅ [{exp_name}] 下載完成，開始執行智能分類與註冊...")
+        except Exception as e:
+            print(f"⚠️ [{exp_name}] gdown 下載過程中發生錯誤 (可能是遇到舊版巨型檔案限制): {e}")
+            print(f"    但將會繼續為本地已有的檔案進行歸檔與註冊...")
             
+        try:
             # 2. 尋找所有 yaml 設定檔
             yaml_files = glob.glob(os.path.join(local_output, "config_*.yaml"))
             

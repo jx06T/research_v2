@@ -31,6 +31,8 @@ class Config:
     aug_degrees: float = 0.0
     
     # Dataset
+    src_font: str = ""
+    tgt_font: str = ""
     missing_chars: List[str] = field(default_factory=list)
 
     @classmethod

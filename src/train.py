@@ -25,6 +25,9 @@ def get_args():
 def main():
     args = get_args()
     config = Config.from_yaml(args.config)
+    config.src_font = args.src_font
+    config.tgt_font = args.tgt_font
+    
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
