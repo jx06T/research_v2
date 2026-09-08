@@ -9,6 +9,8 @@ def build_dataloader(config, src_font_path, tgt_font_path):
         dataset, 
         batch_size=config.batch_size, 
         shuffle=True, 
-        num_workers=2
+        num_workers=12,
+        pin_memory=True
     )
     return dataset, dataloader
+
