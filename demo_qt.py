@@ -7,7 +7,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QTextEdit, QLabel, QSlider, 
-                             QComboBox, QScrollArea, QCheckBox, QLayout)
+                             QListWidget, QAbstractItemView, QScrollArea, QCheckBox, QLayout)
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QTimer
 from PyQt6.QtGui import QImage, QPixmap
 from src.models.generator.dynamic_gen import DynamicGenerator
@@ -109,36 +109,70 @@ class FlowLayout(QLayout):
         return y + lineHeight - rect.y()
 
 # ==========================================
-# 3. 單個字符方塊 Widget
+# 3. 單個字符方塊 Widget (支援多模型顯示)
 # ==========================================
 class CharBlock(QWidget):
-    def __init__(self, char, pixel_size):
+    def __init__(self, char, pixel_size, active_models):
         super().__init__()
         self.char = char
+        self.active_models = active_models
+        
         self.layout = QVBoxLayout(self)
-        self.layout.setSpacing(0)
-        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setSpacing(2)
+        self.layout.setContentsMargins(2, 2, 2, 2)
+        self.setStyleSheet("background-color: #fafafa; border: 1px solid #ccc; border-radius: 4px;")
         
         self.label = QLabel(char)
         self.label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.label.setStyleSheet("background-color: #f0f0f0; border: 1px solid #ddd; font-size: 9px; color: #666;")
+        self.label.setStyleSheet("font-size: 10px; color: #333; font-weight: bold; border: none;")
         
         self.src_img = QLabel()
-        self.gen_img = QLabel()
-        self.gt_img = QLabel()
+        self.src_img.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.src_img.setStyleSheet("border: none;")
         
-        self.setFixedSize(pixel_size, pixel_size * 3 + 15)
         self.layout.addWidget(self.label)
         self.layout.addWidget(self.src_img)
-        self.layout.addWidget(self.gen_img)
-        self.layout.addWidget(self.gt_img)
+        
+        self.model_rows = []
+        for name, _ in self.active_models:
+            # 截斷過長名稱
+            short_name = name[:18] + ".." if len(name) > 20 else name
+            name_lbl = QLabel(short_name)
+            name_lbl.setStyleSheet("font-size: 8px; color: #555; margin-top: 4px; border: none;")
+            name_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            
+            row_layout = QHBoxLayout()
+            row_layout.setSpacing(2)
+            row_layout.setContentsMargins(0,0,0,0)
+            gen_lbl = QLabel()
+            gen_lbl.setStyleSheet("border: none;")
+            gt_lbl = QLabel()
+            gt_lbl.setStyleSheet("border: none;")
+            
+            row_layout.addWidget(gen_lbl)
+            row_layout.addWidget(gt_lbl)
+            
+            self.layout.addWidget(name_lbl)
+            self.layout.addLayout(row_layout)
+            
+            self.model_rows.append((name_lbl, gen_lbl, gt_lbl))
 
     def update_visibility(self, show_label, show_src, show_gt, pixel_size):
         self.label.setVisible(show_label)
         self.src_img.setVisible(show_src)
-        self.gt_img.setVisible(show_gt)
-        h = pixel_size + (pixel_size if show_src else 0) + (pixel_size if show_gt else 0) + (15 if show_label else 0)
-        self.setFixedSize(pixel_size, h)
+        
+        row_width = (pixel_size * 2 + 2) if show_gt else pixel_size
+        width = max(pixel_size, row_width) + 4
+        
+        h = 4 # padding
+        if show_label: h += 15
+        if show_src: h += pixel_size
+        
+        for name_lbl, gen_lbl, gt_lbl in self.model_rows:
+            gt_lbl.setVisible(show_gt)
+            h += 12 + pixel_size # 名字高度 + 圖片高度
+            
+        self.setFixedSize(width, h)
 
 # ==========================================
 # 4. 主視窗
@@ -146,19 +180,17 @@ class CharBlock(QWidget):
 class FontGenApp(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("GAN Font Real-time Demo (Auto-GT Switch)")
+        self.setWindowTitle("GAN Font Real-time Demo (Multi-Model Comparison)")
         self.resize(1280, 850)
 
-        self.cfg = DemoConfig()
-        self.current_model = None
-        self.current_model_name = ""
-        self.current_gt_font_path = ""
-        self.current_src_font_path = ""
+        self.cfg_template = DemoConfig()
+        self.active_models = [] # List of (display_name, dict: {model, config, current_src_font, current_gt_font})
         
         self.pixel_size = 32
         self.content_scale = 0.93
         self.blocks = [] 
         self.last_text = "" 
+        self.last_active_names = []
 
         self.inference_cache = {}
         self.update_timer = QTimer()
@@ -166,8 +198,9 @@ class FontGenApp(QMainWindow):
         self.update_timer.timeout.connect(self._do_update_generation)
         
         self.init_ui()
-        # 初始化加載第一個模型
-        self.load_selected_model(list(EXPERIMENTS.keys())[0])
+        # 預設選取第一個模型
+        if EXPERIMENTS:
+            self.model_list.setCurrentRow(0)
 
     def init_ui(self):
         main_widget = QWidget()
@@ -177,11 +210,14 @@ class FontGenApp(QMainWindow):
         ctrl_box = QVBoxLayout()
         ctrl_box.setSpacing(8)
 
-        self.model_combo = QComboBox()
-        self.model_combo.addItems(EXPERIMENTS.keys())
-        self.model_combo.currentTextChanged.connect(self.load_selected_model)
-        ctrl_box.addWidget(QLabel("<b>模型版本:</b>"))
-        ctrl_box.addWidget(self.model_combo)
+        # 改為多選清單
+        ctrl_box.addWidget(QLabel("<b>模型版本 (可按 Ctrl 多選):</b>"))
+        self.model_list = QListWidget()
+        self.model_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.model_list.addItems(EXPERIMENTS.keys())
+        self.model_list.itemSelectionChanged.connect(self.load_selected_models)
+        self.model_list.setMaximumHeight(200)
+        ctrl_box.addWidget(self.model_list)
 
         ctrl_box.addWidget(QLabel("<b>文字比例:</b>"))
         self.scale_value_label = QLabel("0.93")
@@ -203,13 +239,12 @@ class FontGenApp(QMainWindow):
 
         self.chk_label = QCheckBox("顯示標籤"); self.chk_label.setChecked(True)
         self.chk_src = QCheckBox("顯示 Source"); self.chk_src.setChecked(True)
-        self.chk_gt = QCheckBox("顯示 GT"); self.chk_gt.setChecked(True)
+        self.chk_gt = QCheckBox("顯示 GT (對照目標字體)"); self.chk_gt.setChecked(True)
         for chk in [self.chk_label, self.chk_src, self.chk_gt]:
             chk.stateChanged.connect(self.refresh_ui_visibility)
             ctrl_box.addWidget(chk)
 
         ctrl_box.addWidget(QLabel("<b>測試文字:</b>"))
-        # self.text_input = QTextEdit("星鼻澤叮朝")
         self.text_input = QTextEdit("""根據考古學家研究，臺灣至少在舊石器時代晚期，距今兩三萬年前已
 有人類居住，而高雄地區雖未發現舊石器時代遺址，但很可能也是早期人
 雅化的詩還不得不回向俗化，剛剛來自民間的詞，在當時不用說自然
@@ -225,24 +260,23 @@ class FontGenApp(QMainWindow):
         self.scroll.setWidgetResizable(True)
         self.container = QWidget()
         self.container.setStyleSheet("background-color: white;")
-        self.flow_layout = FlowLayout(self.container, spacing=0)
+        self.flow_layout = FlowLayout(self.container, spacing=4)
         self.scroll.setWidget(self.container)
 
-        left_w = QWidget(); left_w.setFixedWidth(240); left_w.setLayout(ctrl_box)
+        left_w = QWidget(); left_w.setFixedWidth(260); left_w.setLayout(ctrl_box)
         layout.addWidget(left_w)
         layout.addWidget(self.scroll)
 
-    def render_char_tensor(self, char, font_path):
-        size = self.cfg.image_size
-        img = Image.new('L', (size, size), color=255)
+    def render_char_tensor(self, char, font_path, image_size):
+        img = Image.new('L', (image_size, image_size), color=255)
         draw = ImageDraw.Draw(img)
         try:
-            font = ImageFont.truetype(font_path, int(size * self.content_scale))
+            font = ImageFont.truetype(font_path, int(image_size * self.content_scale))
             left, top, right, bottom = font.getbbox(char)
             # 簡單置中對齊邏輯
-            draw.text(((size - (right-left)) / 2 - left, (size - (bottom-top)) / 2 - top), char, font=font, fill=0)
+            draw.text(((image_size - (right-left)) / 2 - left, (image_size - (bottom-top)) / 2 - top), char, font=font, fill=0)
         except Exception as e:
-            print(f"Render Error ({char}): {e}")
+            pass # 略過報錯
         return torch.from_numpy(1.0 - np.array(img).astype(np.float32)/255.0).unsqueeze(0).unsqueeze(0).to(DEVICE)
 
     def on_param_changed(self):
@@ -258,40 +292,51 @@ class FontGenApp(QMainWindow):
         for block in self.blocks:
             block.update_visibility(self.chk_label.isChecked(), self.chk_src.isChecked(), self.chk_gt.isChecked(), self.pixel_size)
 
-    def load_selected_model(self, name):
-        try:
-            print(f"Loading model: {name}...")
-            config = EXPERIMENTS[name]
-            
-            # 更新當前字體路徑
-            self.current_gt_font_path = config["target_font"]
-            self.current_src_font_path = config["source_font"]
-            self.current_model_name = name
-            
-            # 更新網路超參數
-            self.cfg.image_size = config["image_size"]
-            self.cfg.bottleneck_size = config["bottleneck_size"]
-            self.cfg.nz = config["nz"]
-            self.cfg.nc = config["nc"]
-            
-            # 初始化並加載模型權重
-            self.current_model = DynamicGenerator(self.cfg).to(DEVICE)
-            self.current_model.load_state_dict(torch.load(config["model_path"], map_location=DEVICE))
-            self.current_model.eval()
-            
-            # 模型換了，快取失效並重置文字狀態
+    def load_selected_models(self):
+        selected_items = self.model_list.selectedItems()
+        self.active_models = []
+        
+        print("重新加載選取的模型...")
+        for item in selected_items:
+            name = item.text()
+            try:
+                config = EXPERIMENTS[name]
+                
+                # 建立獨立的 config 給這個模型
+                cfg = DemoConfig()
+                cfg.image_size = config["image_size"]
+                cfg.bottleneck_size = config["bottleneck_size"]
+                cfg.nz = config["nz"]
+                cfg.nc = config["nc"]
+                
+                model = DynamicGenerator(cfg).to(DEVICE)
+                model.load_state_dict(torch.load(config["model_path"], map_location=DEVICE))
+                model.eval()
+                
+                self.active_models.append((name, {
+                    "model": model,
+                    "cfg": cfg,
+                    "src_font": config["source_font"],
+                    "tgt_font": config["target_font"]
+                }))
+            except Exception as e:
+                print(f"無法載入模型 {name}: {e}")
+                
+        # 檢查選取的組合是否改變
+        current_names = [m[0] for m in self.active_models]
+        if current_names != self.last_active_names:
             self.last_text = "" 
-            self.inference_cache.clear()
+            self.last_active_names = current_names
             self.update_timer.start(100)
-        except Exception as e: 
-            print(f"Load Error: {e}")
 
     def update_generation(self):
         self.update_timer.start(100)
 
     def _do_update_generation(self):
-        if not self.current_model: return
-        
+        if not self.active_models:
+            self._clear_all_blocks()
+            return
+            
         raw_text = self.text_input.toPlainText()
         current_text = raw_text.replace("\n", "").replace(" ", "")
         
@@ -315,39 +360,54 @@ class FontGenApp(QMainWindow):
         self.blocks = []
 
     def _add_chars_to_ui(self, text_segment):
+        active_names = tuple(m[0] for m in self.active_models)
+        
         for char in text_segment:
-            # 快取鍵包含模型名稱，確保切換模型時會重新推論
-            cache_key = (char, self.current_model_name, self.content_scale)
+            cache_key = (char, active_names, self.content_scale)
             
             if cache_key in self.inference_cache:
-                s_px, f_px, g_px = self.inference_cache[cache_key]
+                s_px, model_pixmaps = self.inference_cache[cache_key]
             else:
-                src_t = self.render_char_tensor(char, self.current_src_font_path)
-                gt_t = self.render_char_tensor(char, self.current_gt_font_path)
+                # 為了避免多個模型使用的 src_font 不同，我們以第一個模型的 src_font 作為顯示用
+                primary_src_font = self.active_models[0][1]["src_font"]
+                primary_size = self.active_models[0][1]["cfg"].image_size
+                s_px = tensor_to_pixmap(self.render_char_tensor(char, primary_src_font, primary_size), self.pixel_size)
                 
-                with torch.no_grad():
-                    noise = torch.randn(1, self.cfg.nz, self.cfg.bottleneck_size, self.cfg.bottleneck_size).to(DEVICE)
-                    fake_t = torch.clamp(self.current_model(noise, src_t), 0, 1)
+                model_pixmaps = []
+                for name, info in self.active_models:
+                    src_t = self.render_char_tensor(char, info["src_font"], info["cfg"].image_size)
+                    gt_t = self.render_char_tensor(char, info["tgt_font"], info["cfg"].image_size)
+                    
+                    with torch.no_grad():
+                        noise = torch.randn(1, info["cfg"].nz, info["cfg"].bottleneck_size, info["cfg"].bottleneck_size).to(DEVICE)
+                        fake_t = torch.clamp(info["model"](noise, src_t), 0, 1)
 
-                s_px = tensor_to_pixmap(src_t, self.pixel_size)
-                f_px = tensor_to_pixmap(fake_t, self.pixel_size)
-                g_px = tensor_to_pixmap(gt_t, self.pixel_size)
-                self.inference_cache[cache_key] = (s_px, f_px, g_px)
+                    f_px = tensor_to_pixmap(fake_t, self.pixel_size)
+                    g_px = tensor_to_pixmap(gt_t, self.pixel_size)
+                    model_pixmaps.append((f_px, g_px))
+                    
+                self.inference_cache[cache_key] = (s_px, model_pixmaps)
 
-            block = CharBlock(char, self.pixel_size)
+            block = CharBlock(char, self.pixel_size, self.active_models)
             block.src_img.setPixmap(s_px)
-            block.gen_img.setPixmap(f_px)
-            block.gt_img.setPixmap(g_px)
+            
+            for idx, (f_px, g_px) in enumerate(model_pixmaps):
+                _, gen_lbl, gt_lbl = block.model_rows[idx]
+                gen_lbl.setPixmap(f_px)
+                gt_lbl.setPixmap(g_px)
+                
             block.update_visibility(self.chk_label.isChecked(), self.chk_src.isChecked(), self.chk_gt.isChecked(), self.pixel_size)
             
             self.flow_layout.addWidget(block)
             self.blocks.append(block)
 
 def tensor_to_pixmap(tensor, target_px):
-    # 將 tensor 轉回 0-255 的灰階圖
+    # 動態讀取實際尺寸
     img_np = 255 - (tensor.detach().cpu().squeeze().numpy() * 255).astype(np.uint8)
-    # PIL/Tensor 預設 64x64，轉換為 QImage
-    qimg = QImage(img_np.data, 64, 64, 64, QImage.Format.Format_Grayscale8)
+    # img_np shape: (H, W)
+    h, w = img_np.shape
+    bytes_per_line = w
+    qimg = QImage(img_np.data, w, h, bytes_per_line, QImage.Format.Format_Grayscale8)
     return QPixmap.fromImage(qimg).scaled(target_px, target_px, Qt.AspectRatioMode.IgnoreAspectRatio, Qt.TransformationMode.SmoothTransformation)
 
 if __name__ == "__main__":
