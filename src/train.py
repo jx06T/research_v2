@@ -88,8 +88,8 @@ def main():
 
         # Save Checkpoint
         if (epoch + 1) % args.save_interval == 0 or epoch == config.num_epochs - 1:
-            # 1. 永遠覆寫最新版本 (供 demo_qt.py 或自動化下載使用)
-            latest_path = os.path.join(args.output_dir, "G_latest.pth")
+            # 1. 永遠覆寫最新版本 (供 demo_qt.py 或自動化下載使用)，加上 run_id 避免併發覆蓋
+            latest_path = os.path.join(args.output_dir, f"G_latest_{logger.run_id}.pth")
             torch.save(G.state_dict(), latest_path)
             
             # 2. 儲存推論專用輕量檔 (僅包含 Generator 權重，檔案很小)
