@@ -4,3 +4,4 @@ pillow>=9.0.0
 pyyaml>=6.0
 matplotlib>=3.8.0
 lpips
+gdown
