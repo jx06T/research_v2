@@ -67,3 +67,4 @@ research_v2/
 1. **遠端訓練**：在 Colab 透過 `%run src/train.py --config configs/l1_100_n8.yaml ...` 啟動訓練。
 2. **本地同步**：在本地電腦執行 `python scripts/python_pull.py`，它會在背景每 5 分鐘掃描遠端，並將新的 `G_*.pth` 下載到本地的 `runs/exp_01/`。
 3. **本地測試**：開啟 `demo_qt.py`，讀取剛下載的推論權重，實時檢視字體生成效果。
+
