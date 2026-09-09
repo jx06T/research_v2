@@ -1,0 +1,21 @@
+bottleneck_size: 4
+kernel_size: 4
+padding: 1
+fixed_layers: 5
+lambda_l1: 100.0
+aug_scale: [0.7, 1.4]
+aug_translate: [0.6, 0.6]
+aug_mask_prob: 0
+aug_degrees: 0
+nz: 128
+ngf: 64
+ndf: 64
+image_size: 128
+nc: 1
+lambda_gp: 10
+lr: 0.0004
+batch_size: 16
+betas: [0.0, 0.9]
+num_epochs: 600
+n_critic: 2
+missing_chars: []
