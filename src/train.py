@@ -8,6 +8,7 @@ import torch.nn.functional as F
 from config.config_parser import Config
 from data.builder import build_dataloader
 from models.generator.dynamic_gen import DynamicGenerator
+from models.generator.attn_unet_gen import AttnUNetGenerator
 from models.discriminator.patch_gan import Discriminator
 from models.loss import compute_gradient_penalty
 from utils.logger import ExperimentLogger
@@ -40,7 +41,13 @@ def main():
     os.makedirs(args.checkpoint_dir, exist_ok=True)
 
     # Models
-    G = DynamicGenerator(config).to(device)
+    if config.gen_type == "unet":
+        print(f"Instantiating AttnUNetGenerator (U-Net + Self-Attention)...")
+        G = AttnUNetGenerator(config).to(device)
+    else:
+        print(f"Instantiating DynamicGenerator (Encoder-Decoder)...")
+        G = DynamicGenerator(config).to(device)
+        
     D = Discriminator(config).to(device)
     print(f"Generator params: {sum(p.numel() for p in G.parameters())}")
     print(f"Discriminator params: {sum(p.numel() for p in D.parameters())}")

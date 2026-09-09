@@ -11,6 +11,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QTimer
 from PyQt6.QtGui import QImage, QPixmap
 from src.models.generator.dynamic_gen import DynamicGenerator
+from src.models.generator.attn_unet_gen import AttnUNetGenerator
 
 # ==========================================
 # 1. 基礎配置 (更新 EXPERIMENTS 結構)
@@ -27,6 +28,7 @@ class DemoConfig:
         self.nc = 1
         self.ngf = 64
         self.ndf = 64
+        self.gen_type = "dynamic"
 
 # 動態加載模型清單
 EXPERIMENTS = {}
@@ -61,7 +63,8 @@ try:
                     "image_size": int(row.get("image_size", 64)) if str(row.get("image_size")).isdigit() else 64,
                     "bottleneck_size": int(row.get("bottleneck_size", 4)) if str(row.get("bottleneck_size")).isdigit() else 4,
                     "nz": int(row.get("nz", 256)) if str(row.get("nz")).isdigit() else 256,
-                    "nc": int(row.get("nc", 1)) if str(row.get("nc")).isdigit() else 1
+                    "nc": int(row.get("nc", 1)) if str(row.get("nc")).isdigit() else 1,
+                    "gen_type": row.get("gen_type", "dynamic")
                 }
 except Exception as e:
     print(f"無法讀取 model_registry.csv 或尚無紀錄: {e}")
@@ -75,7 +78,8 @@ if not EXPERIMENTS:
         "image_size": 64,
         "bottleneck_size": 4,
         "nz": 256,
-        "nc": 1
+        "nc": 1,
+        "gen_type": "dynamic"
     }
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -328,8 +332,12 @@ class FontGenApp(QMainWindow):
                 cfg.bottleneck_size = config["bottleneck_size"]
                 cfg.nz = config["nz"]
                 cfg.nc = config["nc"]
+                cfg.gen_type = config.get("gen_type", "dynamic")
                 
-                model = DynamicGenerator(cfg).to(DEVICE)
+                if cfg.gen_type == "unet":
+                    model = AttnUNetGenerator(cfg).to(DEVICE)
+                else:
+                    model = DynamicGenerator(cfg).to(DEVICE)
                 model.load_state_dict(torch.load(config["model_path"], map_location=DEVICE))
                 model.eval()
                 

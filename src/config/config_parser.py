@@ -5,6 +5,7 @@ from typing import List, Tuple
 @dataclass
 class Config:
     # Model
+    gen_type: str = "dynamic" # "dynamic" or "unet"
     bottleneck_size: int = 4
     kernel_size: int = 4
     padding: int = 1

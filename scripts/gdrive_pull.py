@@ -14,7 +14,7 @@ def parse_yaml(filepath):
         return yaml.load(f, Loader=yaml.UnsafeLoader)
 
 def update_registry(run_id, config, exp_name, arch_folder):
-    fieldnames = ['run_id', 'experiment', 'arch_folder', 'image_size', 'bottleneck_size', 'nc', 'nz', 'lambda_l1', 'batch_size', 'src_font', 'tgt_font']
+    fieldnames = ['run_id', 'experiment', 'arch_folder', 'image_size', 'bottleneck_size', 'nc', 'nz', 'lambda_l1', 'batch_size', 'src_font', 'tgt_font', 'gen_type']
     
     file_exists = os.path.exists(REGISTRY_FILE)
     existing_runs = set()
@@ -43,7 +43,8 @@ def update_registry(run_id, config, exp_name, arch_folder):
             'nz': config.get('nz', 'N/A'),
             'batch_size': config.get('batch_size', 'N/A'),
             'src_font': config.get('src_font', 'N/A'),
-            'tgt_font': config.get('tgt_font', 'N/A')
+            'tgt_font': config.get('tgt_font', 'N/A'),
+            'gen_type': config.get('gen_type', 'dynamic')
         })
     print(f"    [Registry] 已將 {run_id} 登錄至 {REGISTRY_FILE}")
 
