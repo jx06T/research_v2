@@ -71,7 +71,7 @@ def preprocess_char(dataset, char_str):
 
 def test_specific_chars(G, dataset, config, epoch, chars_to_test=None, device="cpu"):
     if chars_to_test is None:
-        chars_to_test = ["t","R", "G", "7","田","名","朝","明"]
+        chars_to_test = ["t","R", "G", "7","田","名","朝","明", "永", "灣", "體"]
 
     source_list = []
     target_list = []
