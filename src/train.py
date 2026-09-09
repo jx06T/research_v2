@@ -1,6 +1,7 @@
 import argparse
 import os
 import torch
+import torch.utils.data
 import torch.optim as optim
 import torch.nn.functional as F
 
