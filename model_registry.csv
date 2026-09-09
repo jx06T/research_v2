@@ -1,3 +1,11 @@
 run_id,experiment,arch_folder,image_size,bottleneck_size,nc,nz,lambda_l1,batch_size,src_font,tgt_font
 20260908_144645_zrkw,a3,arch_img64_btn4,64,4,1,256,,32,N/A,N/A
 20260908_150338_3l8m,a3,arch_img128_btn8,128,8,1,256,,16,N/A,N/A
+20260909_115907_1xmk,a3,arch_img128_btn8,128,8,1,256,,16,data/fonts/NotoSansTC-Regular.ttf,data/fonts/kaiu.ttf
+20260909_115950_p61k,a3,arch_img128_btn4,128,4,1,128,,16,data/fonts/NotoSansTC-Regular.ttf,data/fonts/kaiu.ttf
+20260909_120045_knz0,a3,arch_img128_btn8,128,8,1,256,,16,data/fonts/NotoSansTC-Regular.ttf,data/fonts/kaiu.ttf
+20260909_120245_w56x,a3,arch_img128_btn8,128,8,1,256,,16,data/fonts/NotoSansTC-Regular.ttf,data/fonts/kaiu.ttf
+20260908_142729_9a24,a1,arch_img64_btn8,64,8,1,256,,32,N/A,N/A
+20260908_143702_5y4r,a1,arch_img64_btn8,64,8,1,256,,32,N/A,N/A
+20260908_144651_zetx,a1,arch_img64_btn8,64,8,1,256,,32,N/A,N/A
+20260909_134837_u6x3,a1,arch_img128_btn4,128,4,1,128,,16,data/fonts/NotoSansTC-Regular.ttf,data/fonts/kaiu.ttf

@@ -53,7 +53,8 @@ def main():
 
     # 格式: {"實驗名稱": "Google Drive 資料夾 ID"}
     DRIVE_FOLDERS = {
-        'a3': '12h4SSeCxbwxWME9hbdJ_Yv1pCXk-UabZ'
+        'a3': '12h4SSeCxbwxWME9hbdJ_Yv1pCXk-UabZ',
+        'a1': '1cnJyHzMZnO8EyJJBep0gkDz1wMg1elXW'
     }
 
     print("啟動 Google Drive 智能歸檔與分類工具")

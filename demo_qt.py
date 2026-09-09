@@ -44,7 +44,16 @@ try:
             
             for model_path in found_models:
                 filename = os.path.basename(model_path)
-                display_name = f"[{exp_name}] {filename}"
+                short_run_id = run_id.split('_')[-1] if '_' in run_id else run_id
+                
+                if "epoch" in filename:
+                    epoch_str = filename.split("epoch_")[-1].replace(".pth", "")
+                    display_name = f"[{exp_name}] {short_run_id} (Ep {epoch_str})"
+                elif "latest" in filename:
+                    display_name = f"[{exp_name}] {short_run_id} (Latest)"
+                else:
+                    display_name = f"[{exp_name}] {short_run_id}"
+                
                 EXPERIMENTS[display_name] = {
                     "model_path": model_path,
                     "target_font": row.get("tgt_font") if row.get("tgt_font") not in ["", "N/A", None] else "data/fonts/kaiu.ttf",
@@ -141,36 +150,46 @@ class CharBlock(QWidget):
             name_lbl.setStyleSheet("font-size: 8px; color: #555; margin-top: 4px; border: none;")
             name_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             
-            row_layout = QHBoxLayout()
-            row_layout.setSpacing(2)
-            row_layout.setContentsMargins(0,0,0,0)
+            from PyQt6.QtWidgets import QGridLayout
+            grid = QGridLayout()
+            grid.setSpacing(2)
+            grid.setContentsMargins(0,0,0,0)
             gen_lbl = QLabel()
             gen_lbl.setStyleSheet("border: none;")
             gt_lbl = QLabel()
             gt_lbl.setStyleSheet("border: none;")
             
-            row_layout.addWidget(gen_lbl)
-            row_layout.addWidget(gt_lbl)
+            grid.addWidget(gen_lbl, 0, 0)
+            grid.addWidget(gt_lbl, 0, 1)
             
             self.layout.addWidget(name_lbl)
-            self.layout.addLayout(row_layout)
+            self.layout.addLayout(grid)
             
-            self.model_rows.append((name_lbl, gen_lbl, gt_lbl))
+            self.model_rows.append((name_lbl, gen_lbl, gt_lbl, grid))
 
-    def update_visibility(self, show_label, show_src, show_gt, pixel_size):
+    def update_visibility(self, show_label, show_src, show_gt, gt_bottom, pixel_size):
         self.label.setVisible(show_label)
         self.src_img.setVisible(show_src)
         
-        row_width = (pixel_size * 2 + 2) if show_gt else pixel_size
+        row_width = pixel_size
+        if show_gt and not gt_bottom:
+            row_width = pixel_size * 2 + 2
+            
         width = max(pixel_size, row_width) + 4
         
         h = 4 # padding
         if show_label: h += 15
         if show_src: h += pixel_size
         
-        for name_lbl, gen_lbl, gt_lbl in self.model_rows:
+        for name_lbl, gen_lbl, gt_lbl, grid in self.model_rows:
             gt_lbl.setVisible(show_gt)
-            h += 12 + pixel_size # 名字高度 + 圖片高度
+            grid.removeWidget(gt_lbl)
+            if gt_bottom:
+                grid.addWidget(gt_lbl, 1, 0)
+                h += 12 + pixel_size + (pixel_size if show_gt else 0)
+            else:
+                grid.addWidget(gt_lbl, 0, 1)
+                h += 12 + pixel_size # 名字高度 + 圖片高度
             
         self.setFixedSize(width, h)
 
@@ -240,7 +259,8 @@ class FontGenApp(QMainWindow):
         self.chk_label = QCheckBox("顯示標籤"); self.chk_label.setChecked(True)
         self.chk_src = QCheckBox("顯示 Source"); self.chk_src.setChecked(True)
         self.chk_gt = QCheckBox("顯示 GT (對照目標字體)"); self.chk_gt.setChecked(True)
-        for chk in [self.chk_label, self.chk_src, self.chk_gt]:
+        self.chk_gt_bottom = QCheckBox("GT 放於下方 (垂直比較)")
+        for chk in [self.chk_label, self.chk_src, self.chk_gt, self.chk_gt_bottom]:
             chk.stateChanged.connect(self.refresh_ui_visibility)
             ctrl_box.addWidget(chk)
 
@@ -290,7 +310,7 @@ class FontGenApp(QMainWindow):
 
     def refresh_ui_visibility(self):
         for block in self.blocks:
-            block.update_visibility(self.chk_label.isChecked(), self.chk_src.isChecked(), self.chk_gt.isChecked(), self.pixel_size)
+            block.update_visibility(self.chk_label.isChecked(), self.chk_src.isChecked(), self.chk_gt.isChecked(), self.chk_gt_bottom.isChecked(), self.pixel_size)
 
     def load_selected_models(self):
         selected_items = self.model_list.selectedItems()
@@ -392,11 +412,11 @@ class FontGenApp(QMainWindow):
             block.src_img.setPixmap(s_px)
             
             for idx, (f_px, g_px) in enumerate(model_pixmaps):
-                _, gen_lbl, gt_lbl = block.model_rows[idx]
+                _, gen_lbl, gt_lbl, _ = block.model_rows[idx]
                 gen_lbl.setPixmap(f_px)
                 gt_lbl.setPixmap(g_px)
                 
-            block.update_visibility(self.chk_label.isChecked(), self.chk_src.isChecked(), self.chk_gt.isChecked(), self.pixel_size)
+            block.update_visibility(self.chk_label.isChecked(), self.chk_src.isChecked(), self.chk_gt.isChecked(), self.chk_gt_bottom.isChecked(), self.pixel_size)
             
             self.flow_layout.addWidget(block)
             self.blocks.append(block)
