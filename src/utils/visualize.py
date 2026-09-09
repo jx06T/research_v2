@@ -46,14 +46,26 @@ def plot_gan_results(source_imgs, target_imgs, fake_imgs, labels, epoch, config,
 
 def plot_training_losses(history, config):
     plt.figure(figsize=(10, 5))
-    if "D_loss" in history:
-        plt.plot(history["D_loss"], label="Discriminator Loss", alpha=0.6)
-    if "G_loss" in history:
-        plt.plot(history["G_loss"], label="Generator Loss (Total)", alpha=0.6)
-    if "L1_loss" in history:
-        plt.plot(history["L1_loss"], label="L1 Pixel Loss", linestyle="--", alpha=0.5)
-    if "loss_G_adv" in history:
-        plt.plot(history["loss_G_adv"], label="G adv Loss", linestyle="--", alpha=0.2)
+    
+    def smooth(scalars, weight=0.85):
+        last = scalars[0]
+        smoothed = []
+        for point in scalars:
+            smoothed_val = last * weight + (1 - weight) * point
+            smoothed.append(smoothed_val)
+            last = smoothed_val
+        return smoothed
+
+    if "D_loss" in history and len(history["D_loss"]) > 0:
+        plt.plot(history["D_loss"], label="Discriminator Loss (Raw)", alpha=0.3, color='blue')
+        plt.plot(smooth(history["D_loss"]), label="D Loss (Smooth)", alpha=0.9, color='blue')
+        
+    if "G_loss" in history and len(history["G_loss"]) > 0:
+        plt.plot(history["G_loss"], label="Generator Loss (Raw)", alpha=0.3, color='orange')
+        plt.plot(smooth(history["G_loss"]), label="G Loss (Smooth)", alpha=0.9, color='orange')
+        
+    if "L1_loss" in history and len(history["L1_loss"]) > 0:
+        plt.plot(smooth(history["L1_loss"]), label="L1 Pixel (Smooth)", linestyle="--", alpha=0.7, color='green')
 
     plt.xlabel("Iterations (logged step)")
     plt.ylabel("Loss")

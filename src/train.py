@@ -50,7 +50,15 @@ def main():
 
     print(f"[{logger.run_id}] Starting Training Loop...")
     
+    recent_g_losses = []
+    max_g_loss = float('-inf')
+    min_g_loss = float('inf')
+
     for epoch in range(config.num_epochs):
+        epoch_g_loss_sum = 0.0
+        epoch_l1_loss_sum = 0.0
+        epoch_adv_loss_sum = 0.0
+        num_batches = len(dataloader)
         for i, (src_imgs, tgt_imgs, _) in enumerate(dataloader):
             bs = src_imgs.size(0)
             src_imgs = src_imgs.to(device)
@@ -82,8 +90,31 @@ def main():
             opt_G.step()
 
             logger.log_metrics(loss_G.item(), loss_D.item(), loss_G_l1.item(), loss_G_adv.item())
+            
+            epoch_g_loss_sum += loss_G.item()
+            epoch_l1_loss_sum += loss_G_l1.item()
+            epoch_adv_loss_sum += loss_G_adv.item()
 
-        print(f"[Epoch {epoch}/{config.num_epochs}] G_loss: {loss_G.item():.4f} | L1: {loss_G_l1.item():.4f} | loss_G_adv: {loss_G_adv.item():.4f}")
+        # Calculate epoch averages
+        avg_g_loss = epoch_g_loss_sum / num_batches
+        avg_l1_loss = epoch_l1_loss_sum / num_batches
+        avg_adv_loss = epoch_adv_loss_sum / num_batches
+        
+        # Track moving averages and extremes
+        recent_g_losses.append(avg_g_loss)
+        if len(recent_g_losses) > 10:
+            recent_g_losses.pop(0)
+            
+        max_g_loss = max(max_g_loss, avg_g_loss)
+        min_g_loss = min(min_g_loss, avg_g_loss)
+        avg_10 = sum(recent_g_losses) / len(recent_g_losses)
+
+        print(f"[Epoch {epoch}/{config.num_epochs}] "
+              f"G_loss (Avg): {avg_g_loss:.4f} | "
+              f"L1: {avg_l1_loss:.4f} | "
+              f"Adv: {avg_adv_loss:.4f} | "
+              f"10-Ep G_loss: {avg_10:.4f} | "
+              f"Extremes (Min/Max): {min_g_loss:.4f}/{max_g_loss:.4f}")
 
         # Visualization
         if epoch % 30 == 0 or epoch == config.num_epochs - 1:
