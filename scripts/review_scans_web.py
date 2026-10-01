@@ -146,10 +146,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8765)
+    parser.add_argument("--port", type=int, default=18765)
     args = parser.parse_args()
     server = make_server(args.manifest, args.host, args.port)
-    print(f"Review at http://{args.host}:{args.port}/ ; Ctrl+C stops the server")
+    print(f"Review at http://{args.host}:{server.server_port}/ ; Ctrl+C stops the server")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

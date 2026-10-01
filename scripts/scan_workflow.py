@@ -146,7 +146,7 @@ def main():
             command.add_argument("--min-interval", type=float, default=4.0, help="Minimum seconds between request starts")
             command.add_argument("--relabel-lite", action="store_true", help="Back up and reprocess Flash-Lite proposals with Flash")
         if name in ("run", "review"):
-            command.add_argument("--port", type=int, default=8765)
+            command.add_argument("--port", type=int, default=18765)
             command.add_argument("--no-browser", action="store_true")
         if name in ("run", "package"):
             command.add_argument("--package", type=Path)
