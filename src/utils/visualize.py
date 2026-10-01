@@ -108,3 +108,17 @@ def test_specific_chars(G, dataset, config, epoch, chars_to_test=None, device="c
     plot_gan_results(src_batch, tgt_batch, fake_batch, chars_to_test, epoch, config, "Specific Test Characters")
     G.train()
 
+
+def test_scanned_samples(G, dataset, config, epoch, device="cpu", n=8):
+    samples = [dataset[i] for i in range(min(n, len(dataset)))]
+    source = torch.stack([s[0] for s in samples]).to(device)
+    target = torch.stack([s[1] for s in samples]).to(device)
+    labels = [s[2] for s in samples]
+    was_training = G.training
+    G.eval()
+    with torch.no_grad():
+        noise = torch.randn(len(samples), config.nz, config.bottleneck_size, config.bottleneck_size, device=device)
+        generated = G(noise, source)
+    plot_gan_results(source, target, generated, labels, epoch, config, "Scanned Handwriting")
+    G.train(was_training)
+

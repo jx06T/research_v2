@@ -82,6 +82,27 @@ python src/train.py \
 
 ## 🔄 本地自動同步腳本 (Auto-Pull Daemon)
 
+### 透過 Google Drive API 同步公開資料夾
+
+先在 Google Cloud 專案啟用 Google Drive API，並於專案根目錄的 `.env` 設定 `G_DRIVE_KEY="你的 API key"`。資料夾須開啟「知道連結的任何人皆可檢視」；API key 無法讀取私人檔案。
+
+```powershell
+# 預設監控 a1、a3，並每 300 秒下載一次
+python scripts/gdrive_api_pull.py
+
+# 只執行一輪；也可自訂多個實驗資料夾
+python scripts/gdrive_api_pull.py --once --folder "a1=資料夾ID或分享網址" --folder "a3=資料夾ID或分享網址"
+
+# 只下載推論權重與設定檔，略過 checkpoint 等大型檔案
+python scripts/gdrive_api_pull.py --models-only --interval 600
+```
+
+下載腳本只將檔案存到 `runs/<實驗名稱>/`，並跳過內容未變更的檔案。單次執行可用 `--once`；持續監控時按 Ctrl+C 結束。若分享網址含 `resourcekey`，直接使用完整網址即可。
+
+需要分類與登錄時，另外執行 `python scripts/organize_runs.py`。此整理腳本目前的 `EXPERIMENTS` 清單為 `a1`、`a3`；若有其他來源或實驗，請先將實驗名稱加入清單。下載與整理可分別排程。
+
+### 透過 SSH 同步
+
 若要在本機自動接收遠端產生的模型權重，免手動下載：
 1. 在本地端 VS Code 開啟一個本機 PowerShell 終端機。
 2. 執行自動拉取腳本：

@@ -28,3 +28,5 @@ data/fonts/*
 !data/fonts/NotoSansTC-Regular.ttf
 !data/fonts/tegaki_zatsu.ttf
 
+.env
+data/processed_scans/

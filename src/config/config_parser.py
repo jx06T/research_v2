@@ -35,6 +35,9 @@ class Config:
     src_font: str = ""
     tgt_font: str = ""
     missing_chars: List[str] = field(default_factory=list)
+    dataset_type: str = "fonts"
+    data_manifest: str = ""
+    writer_id: str = ""
 
     @classmethod
     def from_yaml(cls, path: str):

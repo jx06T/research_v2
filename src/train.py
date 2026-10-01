@@ -12,13 +12,16 @@ from models.generator.attn_unet_gen import AttnUNetGenerator
 from models.discriminator.patch_gan import Discriminator
 from models.loss import compute_gradient_penalty
 from utils.logger import ExperimentLogger
-from utils.visualize import plot_training_losses, test_specific_chars
+from utils.visualize import plot_training_losses, test_specific_chars, test_scanned_samples
 
 def get_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='configs/default.yaml')
     parser.add_argument('--src_font', type=str, required=True)
-    parser.add_argument('--tgt_font', type=str, required=True)
+    parser.add_argument('--tgt_font', type=str)
+    parser.add_argument('--dataset', choices=['fonts', 'scanned'], default='fonts')
+    parser.add_argument('--manifest', type=str, help='Reviewed training CSV for --dataset scanned')
+    parser.add_argument('--writer_id', type=str, default='', help='Select one handwriting style')
     parser.add_argument('--output_dir', type=str, default='./runs')
     parser.add_argument('--checkpoint_dir', type=str, default='./runs_checkpoints')
     parser.add_argument('--save_interval', type=int, default=100)
@@ -26,15 +29,22 @@ def get_args():
 
 def main():
     args = get_args()
+    if args.dataset == 'fonts' and not args.tgt_font:
+        raise SystemExit('--tgt_font is required for --dataset fonts')
+    if args.dataset == 'scanned' and not args.manifest:
+        raise SystemExit('--manifest is required for --dataset scanned')
     config = Config.from_yaml(args.config)
     config.src_font = args.src_font
-    config.tgt_font = args.tgt_font
+    config.tgt_font = args.tgt_font or ''
+    config.dataset_type = args.dataset
+    config.data_manifest = args.manifest or ''
+    config.writer_id = args.writer_id
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
 
     # Dataset & DataLoader
-    dataset, dataloader = build_dataloader(config, args.src_font, args.tgt_font)
+    dataset, dataloader = build_dataloader(config, args.src_font, args.tgt_font, args.manifest, args.writer_id)
     
     # Logger
     logger = ExperimentLogger(config, output_dir=args.output_dir)
@@ -125,7 +135,10 @@ def main():
 
         # Visualization
         if epoch % 30 == 0 or epoch == config.num_epochs - 1:
-            test_specific_chars(G, dataset, config, epoch, device=device)
+            if args.dataset == 'scanned':
+                test_scanned_samples(G, dataset, config, epoch, device=device)
+            else:
+                test_specific_chars(G, dataset, config, epoch, device=device)
 
         if epoch % 50 == 0 or epoch == config.num_epochs - 1:
             plot_training_losses(logger.history, config)
