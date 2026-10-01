@@ -4,8 +4,8 @@ kernel_size: 4
 padding: 1
 fixed_layers: 5
 lambda_l1: 100
-aug_scale: [0.7, 1.4]
-aug_translate: [0.6, 0.6]
+aug_scale: [0.75, 1.4]
+aug_translate: [0.35, 0.335]
 aug_mask_prob: 0
 aug_degrees: 0
 nz: 128
