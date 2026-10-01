@@ -14,6 +14,24 @@ python scripts/scan_workflow.py run `
 
 這個入口依序呼叫下方各腳本：切格、以 Gemini 3.5 Flash 每張 10 字卡辨識、開啟本地覆核頁、產生訓練 CSV 與可攜式 NPZ。按覆核頁的「完成覆核」才會匯出。預設兩次請求開始時間至少間隔 4 秒，遇到 HTTP 429 會暫停後重試；可用 `--min-interval` 調整。若已有 `cells.csv`，會略過切格並接續尚未辨識的格位。也可以單獨使用 `prepare`、`label`、`review`、`package`、`train` 子命令。
 
+`run` 是新資料的完整流程。若只要接續目前的樣本覆核，不必重跑切格與 Gemini：
+
+```powershell
+python scripts/scan_workflow.py review --output data/processed_scans/pilot
+```
+
+覆核完可分別產生人工確認版與包含 Gemini 候選的探索版：
+
+```powershell
+python scripts/scan_workflow.py package --output data/processed_scans/pilot `
+  --package data/scanned_packages/1140101_reviewed.npz
+
+python scripts/scan_workflow.py package --output data/processed_scans/pilot `
+  --package data/scanned_packages/1140101_gemini_proposals.npz --include-proposed
+```
+
+`prepare` 只切格，`label` 只辨識未處理格位，`review` 只開覆核頁，`package` 只匯出封包，`train` 讀封包並呼叫現有訓練程式。各子命令可用 `--help` 查看參數。`run` 遇到既有 `cells.csv` 會沿用，因此不會覆蓋已覆核標籤。
+
 先前若有 Flash-Lite 候選字，要改由 3.5 Flash 重辨，可用：
 
 ```powershell
@@ -94,6 +112,8 @@ python scripts/scan_workflow.py review --output data/processed_scans/1140101
 ```
 
 本機瀏覽器會同時顯示原始字圖、清理字圖與該字在整頁上的紅框位置。可直接修正標籤、接受、捨棄或跳過；每次決定都立即儲存到 `cells.csv`，並追加到 `review_events.jsonl` 留下修訂紀錄。預設只顯示待覆核項目，也能切到全部、已接受或空格。伺服器只綁定 `127.0.0.1`。
+
+鍵盤操作：`Enter` 接受目前候選並前進、`R` 拒絕並前進、`E` 聚焦正確字欄供修改（編輯後按 `Enter` 接受）、`←`／`→` 切換格位。換格時不會自動聚焦輸入框。人工拒絕會記為已覆核，從「待覆核」清單移除；Gemini 自動判為空字的格位仍可人工檢查。可用「已覆核」、「人工拒絕」與「模型未辨識」篩選。
 
 ## GitHub 與雲端訓練
 

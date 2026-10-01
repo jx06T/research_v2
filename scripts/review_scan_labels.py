@@ -22,7 +22,7 @@ def main():
             writer = csv.DictWriter(stream, fieldnames=["id", "raw_path", "clean_path", "candidate", "final_label", "decision"])
             writer.writeheader()
             for row in rows:
-                if row["status"] in ("proposed", "rejected", "unlabeled"):
+                if row["status"] in ("proposed", "unlabeled") or (row["status"] == "rejected" and row["label_source"] != "human_review"):
                     writer.writerow({"id": row["id"], "raw_path": row["raw_path"], "clean_path": row["clean_path"],
                                      "candidate": row["gemini_label"], "final_label": row["label"], "decision": ""})
         print(f"Review sheet: {args.export}")
@@ -44,7 +44,7 @@ def main():
                     raise ValueError(f"Accepted label must contain exactly one character: {row['id']}")
                 row["status"] = "accepted" if decision == "accept" else "rejected"
                 row["label"] = label if decision == "accept" else ""
-                row["label_source"] = "human_review" if decision == "accept" else ""
+                row["label_source"] = "human_review"
                 changed += 1
         write_manifest(args.manifest, rows)
         print(f"Applied {changed} review decisions")

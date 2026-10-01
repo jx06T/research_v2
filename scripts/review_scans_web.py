@@ -29,19 +29,22 @@ button.primary{background:#176c51;color:white;border-color:#176c51}button.danger
 .controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:12px 0}.metadata{line-height:1.7;word-break:break-all}
 #label{width:90px;font-size:28px;text-align:center}#note{min-width:170px;flex:1}#notice{color:#8c3131;min-height:1.4em}
 @media(max-width:950px){main{grid-template-columns:1fr}}
-</style></head><body><header><strong>掃描字圖覆核</strong><label>顯示 <select id="filter"><option value="review">待覆核</option><option value="all">全部</option><option value="proposed">Gemini 候選</option><option value="unlabeled">未辨識</option><option value="rejected">捨棄</option><option value="accepted">已接受</option><option value="blank">空格</option></select></label><span id="summary"></span></header>
+</style></head><body><header><strong>掃描字圖覆核</strong><label>顯示 <select id="filter"><option value="review">待覆核</option><option value="reviewed">已覆核</option><option value="all">全部</option><option value="proposed">Gemini 候選</option><option value="unlabeled">未辨識</option><option value="model_rejected">模型未辨識</option><option value="human_rejected">人工拒絕</option><option value="accepted">已接受</option><option value="blank">空格</option></select></label><span id="summary"></span></header>
 <main><section class="panel"><div class="controls"><button id="prev">← 上一格</button><span id="position"></span><button id="next">下一格 →</button></div>
 <div class="metadata" id="meta"></div><div class="glyphs"><div class="glyph">原始裁切<img id="raw" alt="原始字圖"></div><div class="glyph">背景處理後<img id="clean" alt="清理字圖"></div></div>
 <div class="controls"><label>正確字 <input id="label" autocomplete="off"></label><label>備註 <input id="note" autocomplete="off"></label></div>
-<div class="controls"><button class="primary" id="accept">接受 A</button><button class="danger" id="reject">捨棄 R</button><button id="skip">跳過 →</button><button id="finish">完成覆核</button></div><div id="notice"></div>
-<p>可直接改字後按 Enter 或 A 接受；按 R 捨棄，左右方向鍵換格。只會更改標籤與狀態，原圖及候選答案保留。</p></section>
+<div class="controls"><button class="primary" id="accept">接受 Enter</button><button class="danger" id="reject">拒絕 R</button><button id="skip">跳過 →</button><button id="finish">完成覆核</button></div><div id="notice"></div>
+<p>Enter 接受目前候選並跳到下一格；R 拒絕並跳到下一格；E 進入正確字輸入框，修改後按 Enter 接受；←／→ 切換格位。人工拒絕也算已覆核。</p></section>
 <section class="panel"><strong>所在頁面與格位</strong><div class="page-wrap"><div id="page-inner"><img id="page" alt="整頁稿紙"><div id="mark"></div></div></div></section></main>
 <script>
-let rows=[],visible=[],index=0;const $=id=>document.getElementById(id);
+let rows=[],visible=[],index=0,saving=false;const $=id=>document.getElementById(id);
 const image=(id,kind)=>'/image/'+encodeURIComponent(id)+'/'+kind;
-function refresh(){const f=$('filter').value;visible=rows.filter(r=>f==='all'||(f==='review'?['proposed','unlabeled','rejected'].includes(r.status):r.status===f));index=Math.min(index,Math.max(visible.length-1,0));show()}
-function show(){const counts={};for(const r of rows)counts[r.status]=(counts[r.status]||0)+1;
- $('summary').textContent='全部 '+rows.length+'｜待覆核 '+((counts.proposed||0)+(counts.unlabeled||0)+(counts.rejected||0))+'｜已接受 '+(counts.accepted||0);
+const reviewed=r=>r.label_source==='human_review'&&['accepted','rejected'].includes(r.status);
+function filtered(){const f=$('filter').value;return rows.filter(r=>f==='all'||(f==='review'?(r.status!=='blank'&&!reviewed(r)):f==='reviewed'?reviewed(r):f==='human_rejected'?r.status==='rejected'&&reviewed(r):f==='model_rejected'?r.status==='rejected'&&!reviewed(r):r.status===f))}
+function refresh(nextId){visible=filtered();const next=nextId?visible.findIndex(r=>r.id===nextId):-1;index=next>=0?next:Math.min(index,Math.max(visible.length-1,0));show()}
+function show(){
+ const done=rows.filter(reviewed).length,pending=rows.filter(r=>r.status!=='blank'&&!reviewed(r)).length;
+ $('summary').textContent='全部 '+rows.length+'｜待覆核 '+pending+'｜已覆核 '+done+'（接受 '+rows.filter(r=>reviewed(r)&&r.status==='accepted').length+'、拒絕 '+rows.filter(r=>reviewed(r)&&r.status==='rejected').length+'）';
  const r=visible[index];$('position').textContent=r?`${index+1} / ${visible.length}`:'沒有符合條件的格位';
  if(!r){$('meta').textContent='';$('raw').removeAttribute('src');$('clean').removeAttribute('src');$('page').removeAttribute('src');return}
  $('meta').textContent=`${r.id}　欄 ${r.col}／列 ${r.row}　狀態：${r.status}　Gemini：${r.gemini_label||'未辨識'}（${r.gemini_model||'—'}）`;
@@ -50,16 +53,21 @@ function show(){const counts={};for(const r of rows)counts[r.status]=(counts[r.s
  $('page').onload=()=>{const b=JSON.parse(r.bbox),w=$('page').naturalWidth,h=$('page').naturalHeight;
  const m=$('mark');m.style.left=(b[0]/w*100)+'%';m.style.top=(b[1]/h*100)+'%';m.style.width=((b[2]-b[0])/w*100)+'%';m.style.height=((b[3]-b[1])/h*100)+'%';
  document.querySelector('.page-wrap').scrollTop=((b[1]+b[3])/2/h)*$('page').clientHeight-document.querySelector('.page-wrap').clientHeight/2};
- $('label').focus();$('label').select()}
+}
 function move(delta){if(!visible.length)return;index=(index+delta+visible.length)%visible.length;show()}
-async function save(decision){const r=visible[index];if(!r)return;const label=$('label').value.trim();if(decision==='accept'&&[...label].length!==1){$('notice').textContent='接受時請輸入一個字';return}
- const resp=await fetch('/api/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:r.id,decision,label,note:$('note').value})});
- if(!resp.ok){$('notice').textContent=(await resp.json()).error||'儲存失敗';return}const updated=await resp.json();Object.assign(r,updated);refresh()}
+async function save(decision){const r=visible[index];if(!r||saving)return;const label=$('label').value.trim();if(decision==='accept'&&[...label].length!==1){$('notice').textContent='接受時請輸入一個字；按 E 修改';return}
+ const following=visible.slice(index+1).concat(visible.slice(0,index)).map(item=>item.id);saving=true;
+ try{const resp=await fetch('/api/review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:r.id,decision,label,note:$('note').value})});
+ if(!resp.ok){$('notice').textContent=(await resp.json()).error||'儲存失敗';return}const updated=await resp.json();Object.assign(r,updated);document.activeElement.blur();const remaining=filtered();refresh(following.find(id=>remaining.some(item=>item.id===id)))}
+ catch(error){$('notice').textContent='儲存失敗：'+error.message}finally{saving=false}}
 async function init(){rows=await(await fetch('/api/rows')).json();refresh()}
 $('filter').onchange=()=>{index=0;refresh()};$('prev').onclick=()=>move(-1);$('next').onclick=$('skip').onclick=()=>move(1);
-$('accept').onclick=()=>save('accept');$('reject').onclick=()=>save('reject');$('label').onkeydown=e=>{if(e.key==='Enter')save('accept')};
+$('accept').onclick=()=>save('accept');$('reject').onclick=()=>save('reject');$('label').onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();save('accept')}if(e.key==='Escape')e.target.blur()};
 $('finish').onclick=async()=>{await fetch('/api/finish',{method:'POST'});$('notice').textContent='覆核已完成，可以關閉這個頁面。'};
-document.onkeydown=e=>{if(['INPUT','SELECT'].includes(document.activeElement.tagName))return;if(e.key==='ArrowRight')move(1);if(e.key==='ArrowLeft')move(-1);if(e.key.toLowerCase()==='a')save('accept');if(e.key.toLowerCase()==='r')save('reject')};init();
+document.onkeydown=e=>{if(['INPUT','SELECT','TEXTAREA'].includes(document.activeElement.tagName))return;
+ if(e.key==='ArrowRight'){e.preventDefault();move(1)}else if(e.key==='ArrowLeft'){e.preventDefault();move(-1)}
+ else if(e.key==='Enter'){e.preventDefault();save('accept')}else if(e.key.toLowerCase()==='r'){e.preventDefault();save('reject')}
+ else if(e.key.toLowerCase()==='e'){e.preventDefault();$('label').focus();$('label').select()}};init();
 </script></body></html>'''
 
 
@@ -68,6 +76,27 @@ def make_server(manifest: Path, host: str, port: int) -> HTTPServer:
     by_id = {row["id"]: row for row in rows}
     if len(by_id) != len(rows):
         raise ValueError("Duplicate cell IDs in manifest")
+    # Older UI saves did not mark a human rejection. Restore that distinction
+    # from its audit trail so those decisions leave the pending queue.
+    latest_review = {}
+    audit = manifest.with_name("review_events.jsonl")
+    if audit.is_file():
+        with audit.open(encoding="utf-8") as stream:
+            for line in stream:
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                latest_review[event.get("id")] = event.get("after", {}).get("status")
+    restored = False
+    for row in rows:
+        if row["status"] == "rejected" and not row["label_source"] and latest_review.get(row["id"]) == "rejected":
+            row["label_source"] = "human_review"
+            restored = True
+    if restored:
+        temporary = manifest.with_suffix(".tmp")
+        write_manifest(temporary, rows)
+        os.replace(temporary, manifest)
 
     class Handler(BaseHTTPRequestHandler):
         def send_bytes(self, payload: bytes, content_type: str, status: int = 200):
@@ -122,7 +151,7 @@ def make_server(manifest: Path, host: str, port: int) -> HTTPServer:
                         raise ValueError("Accepted label must be one character")
                     row["status"], row["label"], row["label_source"] = "accepted", label, "human_review"
                 elif decision == "reject":
-                    row["status"], row["label"], row["label_source"] = "rejected", "", ""
+                    row["status"], row["label"], row["label_source"] = "rejected", "", "human_review"
                 else:
                     raise ValueError("Decision must be accept or reject")
                 row["review_note"] = str(payload.get("note", ""))[:500]
