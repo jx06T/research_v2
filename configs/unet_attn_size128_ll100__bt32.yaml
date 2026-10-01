@@ -3,7 +3,7 @@ bottleneck_size: 4
 kernel_size: 4
 padding: 1
 fixed_layers: 5
-lambda_l1: 0
+lambda_l1: 100
 aug_scale: [0.7, 1.4]
 aug_translate: [0.6, 0.6]
 aug_mask_prob: 0
