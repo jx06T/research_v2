@@ -59,6 +59,21 @@ python scripts/prepare_scans.py data/scanned_document/1140101/114_1-1.pdf `
 
 若輸入是資料夾，會處理其中的 PDF 與常見圖片格式。每頁產生 `page_preview.png`、`grid_overlay.png`、`raw/`、`clean/` 及 `calibration.json`，總表在輸出目錄的 `cells.csv`。**先看格線覆蓋圖**；有錯位時，另選新的輸出目錄，根據 `page_preview.png` 的像素座標提供四個外框角點：
 
+### 在瀏覽器中調整四角與欄列數
+
+自動找格線失敗或格框不準時，建議使用互動校正工具，不必手算 `--corners`：
+
+```powershell
+python scripts/scan_workflow.py calibrate `
+  --input data/scanned_document/1140202/114_2-2.pdf `
+  --output data/processed_scans/1140202 `
+  --writer-id writer_1140202
+```
+
+它會在本機瀏覽器顯示原頁、可拖曳的四角和即時格線預覽，欄列數也可直接輸入。起始值從淡綠格線估算，請仍以畫面檢查。放大後可以精調角點；按「確認並切格」才會儲存 `manual_calibration.json` 並呼叫既有切格腳本，按「取消」不會切格。既有輸出目錄若只有失敗時留下的 `page_preview.png`、沒有 `cells.csv`，可以沿用；若已有 `cells.csv`，請改用新輸出目錄以免覆蓋標籤。此互動工具目前一次支援**單一檔案、單一頁面**；資料夾內剛好只有一個檔案也可作為 `--input`。
+
+手動指定座標仍可用於無法開瀏覽器的環境：
+
 ```powershell
 python scripts/prepare_scans.py data/scanned_document/1140101/114_1-1.pdf `
   --output data/processed_scans/manual_trial --cols 26 --rows 22 `

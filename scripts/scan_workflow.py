@@ -115,6 +115,31 @@ def run_ocr(manifest: Path, limit: int | None = None, overwrite: bool = False, i
     run_script("label_scans_ocr.py", *options)
 
 
+def calibrate_and_prepare(args):
+    manifest = args.output / "cells.csv"
+    if manifest.exists():
+        raise ValueError(f"{manifest} already exists; use a new output directory to preserve labels")
+    command = [PYTHON, str(ROOT / "scripts" / "calibrate_scans_web.py"),
+               "--input", str(args.input), "--output", str(args.output), "--port", str(args.port)]
+    if args.cols is not None:
+        command.extend(["--cols", str(args.cols)])
+    if args.rows is not None:
+        command.extend(["--rows", str(args.rows)])
+    if args.no_browser:
+        command.append("--no-browser")
+    result = subprocess.run(command, cwd=ROOT)
+    if result.returncode == 2:
+        print("Calibration cancelled; no cells were extracted", flush=True)
+        return
+    if result.returncode:
+        raise subprocess.CalledProcessError(result.returncode, command)
+    saved = json.loads((args.output / "manual_calibration.json").read_text(encoding="utf-8"))
+    corners = [coordinate for pair in saved["corners"] for coordinate in pair]
+    run_script("prepare_scans.py", saved["source"], "--output", args.output,
+               "--cols", saved["cols"], "--rows", saved["rows"],
+               "--writer-id", args.writer_id, "--size", args.size, "--corners", *corners)
+
+
 def review(manifest: Path, port: int, open_browser: bool):
     url = f"http://127.0.0.1:{port}/"
     print(f"Review in the browser: {url}; click '完成覆核' when finished", flush=True)
@@ -184,6 +209,15 @@ def main():
         if name == "run":
             command.add_argument("--skip-review", action="store_true")
             command.add_argument("--skip-ocr", action="store_true")
+    calibrate = sub.add_parser("calibrate", help="Choose grid corners and counts visually, then extract cells")
+    calibrate.add_argument("--input", type=Path, required=True)
+    calibrate.add_argument("--output", type=Path, required=True)
+    calibrate.add_argument("--writer-id", default="unknown")
+    calibrate.add_argument("--size", type=int, default=128)
+    calibrate.add_argument("--cols", type=int, help="Initial column count; otherwise estimated from grid")
+    calibrate.add_argument("--rows", type=int, help="Initial row count; otherwise estimated from grid")
+    calibrate.add_argument("--port", type=int, default=18766)
+    calibrate.add_argument("--no-browser", action="store_true")
     train = sub.add_parser("train")
     train.add_argument("--package", type=Path, required=True)
     train.add_argument("--src-font", type=Path, required=True)
@@ -193,6 +227,8 @@ def main():
     train.add_argument("--output-dir", type=Path, default=Path("runs/scanned"))
     train.add_argument("--checkpoint-dir", type=Path, default=Path("runs_checkpoints/scanned"))
     args = parser.parse_args()
+    if args.command == "calibrate":
+        return calibrate_and_prepare(args)
     if args.command == "train":
         return train_package(args)
     if args.command in ("run", "prepare"):
