@@ -49,13 +49,18 @@ class ScannedGlyphDataset(Dataset):
             result.paste(glyph, ((size - glyph.width) // 2, (size - glyph.height) // 2))
         return result
 
-    def __getitem__(self, index):
+    def get_unaugmented(self, index):
+        """Return centered source and cleaned target for stable previews."""
         row = self.rows[index]
         source = self._source(row["label"])
         with Image.open(row["clean_path"]) as image:
             target = image.convert("L").resize((self.image_size, self.image_size), Image.Resampling.LANCZOS)
         src = 1.0 - transforms.ToTensor()(source)
         tgt = 1.0 - transforms.ToTensor()(target)
+        return src, tgt, row["label"]
+
+    def __getitem__(self, index):
+        src, tgt, label = self.get_unaugmented(index)
         params = transforms.RandomAffine.get_params(
             degrees=(-self.cfg.aug_degrees, self.cfg.aug_degrees),
             translate=self.cfg.aug_translate, scale_ranges=self.cfg.aug_scale,
@@ -63,4 +68,4 @@ class ScannedGlyphDataset(Dataset):
         )
         src = TF.affine(src, *params, interpolation=transforms.InterpolationMode.BILINEAR, fill=0)
         tgt = TF.affine(tgt, *params, interpolation=transforms.InterpolationMode.BILINEAR, fill=0)
-        return src, tgt, row["label"]
+        return src, tgt, label
