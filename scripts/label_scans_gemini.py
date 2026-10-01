@@ -55,19 +55,25 @@ def make_card(records: list[dict[str, str]], path: Path) -> None:
     path.with_suffix(".json").write_text(json.dumps({str(i + 1): r["id"] for i, r in enumerate(records)}, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def recognize_card(path: Path, count: int, model: str, key: str) -> dict[int, str]:
+def recognize_card(path: Path, count: int, model: str, key: str) -> dict[int, tuple[str, int]]:
     prompt = (
-        "Read each numbered tile as one isolated handwritten Traditional Chinese character. "
-        "Each tile has an original crop on the left and a cleaned version on the right. "
-        "Use the visible strokes only. Do not correct grammar, infer from neighboring tiles, "
-        "or replace Traditional Chinese with Simplified Chinese. "
-        f"Return exactly one result for each number 1 through {count}. "
-        "For an empty, punctuation-only, illegible, or uncertain tile, return an empty string. "
-        "For readable tiles, return exactly one visible character."
+        "Each numbered tile is ONE independent handwritten Traditional Chinese glyph. "
+        "The left image is the original scan; the right image has its background removed. "
+        "Compare both images because cleaning can remove faint strokes. Read only the visible strokes. "
+        "Do not infer from adjacent tiles, sentence meaning, common words, or expected grammar. "
+        "Preserve Traditional forms; do not silently convert to Simplified Chinese. "
+        f"Return exactly one result for every index from 1 through {count}. "
+        "For each tile return char (one visible Han character) and confidence (integer 1-10). "
+        "Confidence is subjective certainty from the strokes, NOT a calibrated probability: "
+        "10 means unmistakable, 7-9 strong, 4-6 plausible but ambiguous, 1-3 weak visual guess. "
+        "If a plausible single character exists despite ambiguity, give the best visual guess with a low score. "
+        "For a blank, punctuation-only, or genuinely unreadable tile, return char='' and confidence=1. "
+        "Never fabricate a character when no plausible strokes support it."
     )
     schema = {"type": "OBJECT", "properties": {"results": {"type": "ARRAY", "items": {
-        "type": "OBJECT", "properties": {"index": {"type": "INTEGER"}, "char": {"type": "STRING"}},
-        "required": ["index", "char"]}}}, "required": ["results"]}
+        "type": "OBJECT", "properties": {"index": {"type": "INTEGER"}, "char": {"type": "STRING"},
+                                      "confidence": {"type": "INTEGER", "minimum": 1, "maximum": 10}},
+        "required": ["index", "char", "confidence"]}}}, "required": ["results"]}
     payload = {"contents": [{"role": "user", "parts": [
         {"text": prompt},
         {"inline_data": {"mime_type": "image/png", "data": base64.b64encode(path.read_bytes()).decode("ascii")}},
@@ -87,8 +93,12 @@ def recognize_card(path: Path, count: int, model: str, key: str) -> dict[int, st
             for item in parsed["results"]:
                 index = item.get("index")
                 value = unicodedata.normalize("NFC", str(item.get("char", "")).strip())
+                confidence = item.get("confidence")
+                if type(confidence) is not int or not 1 <= confidence <= 10:
+                    raise ValueError(f"Invalid Gemini confidence for tile {index}: {confidence!r}")
                 if isinstance(index, int) and 1 <= index <= count and index not in results:
-                    results[index] = value if len(value) == 1 and not value.isspace() else ""
+                    valid = len(value) == 1 and not value.isspace()
+                    results[index] = (value if valid else "", confidence if valid else 1)
             if len(results) != count:
                 raise ValueError(f"Gemini returned {len(results)} of {count} tile indices")
             return results
@@ -111,11 +121,13 @@ def main():
     parser.add_argument("--limit", type=int, help="Maximum number of candidate cells to process")
     parser.add_argument("--cards-only", action="store_true", help="Generate cards without API calls")
     parser.add_argument("--auto-accept", action="store_true", help="Use valid single-character answers in training without manual review")
+    parser.add_argument("--refresh-confidence", action="store_true", help="Requery previous Gemini cells missing confidence; preserve human decisions")
     args = parser.parse_args()
     if not 1 <= args.card_size <= 10:
         parser.error("--card-size must be between 1 and 10")
     records = read_manifest(args.manifest)
-    pending = [r for r in records if r["status"] == "unlabeled"]
+    pending = [r for r in records if r["status"] == "unlabeled" or
+               (args.refresh_confidence and r["gemini_model"] and not r["gemini_confidence"] and r["status"] != "blank")]
     if args.limit is not None:
         pending = pending[:args.limit]
     if not pending:
@@ -132,15 +144,17 @@ def main():
             continue
         answers = recognize_card(card, len(batch), args.model, key)
         for index, row in enumerate(batch, 1):
-            value = answers[index]
+            value, confidence = answers[index]
+            human_reviewed = row["label_source"] == "human_review"
             row["gemini_label"] = value
             row["gemini_model"] = args.model
-            row["status"] = ("accepted" if args.auto_accept else "proposed") if value else "rejected"
-            if value:
+            row["gemini_confidence"] = str(confidence)
+            if not human_reviewed:
+                row["status"] = ("accepted" if args.auto_accept else "proposed") if value else "rejected"
                 row["label"] = value
-                row["label_source"] = "gemini_auto" if args.auto_accept else "gemini_proposal"
+                row["label_source"] = ("gemini_auto" if args.auto_accept else "gemini_proposal") if value else ""
         write_manifest(args.manifest, records)
-        print(f"Card {start // args.card_size + 1}: {sum(bool(answers[i]) for i in answers)} proposed, {sum(not answers[i] for i in answers)} rejected")
+        print(f"Card {start // args.card_size + 1}: {sum(bool(answers[i][0]) for i in answers)} proposed, {sum(not answers[i][0] for i in answers)} rejected")
     if args.cards_only:
         print("No API requests made")
 

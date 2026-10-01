@@ -31,7 +31,9 @@ def main():
             continue
         if not Path(row["clean_path"]).is_file():
             raise FileNotFoundError(row["clean_path"])
-        selected.append({key: row[key] for key in ("id", "clean_path", "label", "writer_id", "source_file", "page", "row", "col", "label_source")})
+        selected.append({key: row[key] for key in (
+            "id", "clean_path", "label", "writer_id", "source_file", "page", "row", "col", "label_source",
+            "gemini_label", "gemini_confidence", "gemini_model", "ocr_label", "ocr_confidence", "ocr_engine")})
     if not selected:
         raise RuntimeError("No accepted Han characters; review labels or use --auto-accept during Gemini labeling")
     args.output.parent.mkdir(parents=True, exist_ok=True)

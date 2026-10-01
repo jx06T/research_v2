@@ -1,4 +1,4 @@
-"""One entry point for scan extraction, paced Gemini labeling, review, packaging and training."""
+"""One entry point for scan extraction, Gemini/OCR labeling, review, packaging and training."""
 
 import argparse
 import csv
@@ -29,33 +29,47 @@ def rows_for(manifest: Path):
         return list(csv.DictReader(stream))
 
 
+def needs_gemini(row: dict[str, str], refresh_confidence: bool) -> bool:
+    return row["status"] == "unlabeled" or bool(
+        refresh_confidence and row.get("gemini_model") and not row.get("gemini_confidence") and row["status"] != "blank"
+    )
+
+
 def reset_lite_proposals(manifest: Path):
     from src.scans.extract import write_manifest
 
     rows = rows_for(manifest)
-    targets = [r for r in rows if r["gemini_model"] == "gemini-3.5-flash-lite" and r["status"] in ("proposed", "rejected")]
+    targets = [r for r in rows if r["gemini_model"] == "gemini-3.5-flash-lite" and
+               r["status"] in ("proposed", "rejected") and r["label_source"] != "human_review"]
     if not targets:
         return 0
     backup = manifest.with_name(f"cells_before_flash_relabel_{datetime.now():%Y%m%d_%H%M%S}.csv")
     shutil.copy2(manifest, backup)
     for row in targets:
-        row.update(status="unlabeled", label="", label_source="", gemini_label="", gemini_model="")
+        row.update(status="unlabeled", label="", label_source="", gemini_label="", gemini_model="", gemini_confidence="")
     write_manifest(manifest, rows)
     print(f"Reset {len(targets)} Flash-Lite proposals for Flash; backup: {backup}", flush=True)
     return len(targets)
 
 
-def paced_label(manifest: Path, model: str, min_interval: float, relabel_lite: bool):
+def paced_label(manifest: Path, model: str, min_interval: float, relabel_lite: bool, refresh_confidence: bool):
     if relabel_lite:
         reset_lite_proposals(manifest)
+    if refresh_confidence:
+        backup = manifest.with_name(f"cells_before_confidence_refresh_{datetime.now():%Y%m%d_%H%M%S}.csv")
+        shutil.copy2(manifest, backup)
+        print(f"Gemini confidence refresh backup: {backup}", flush=True)
     failures = 0
     while True:
-        pending = sum(r["status"] == "unlabeled" for r in rows_for(manifest))
+        pending = sum(needs_gemini(r, refresh_confidence) for r in rows_for(manifest))
         if not pending:
             print("Gemini labeling complete", flush=True)
             return
         start = time.monotonic()
-        result = run_script("label_scans_gemini.py", manifest, "--model", model, "--limit", "10", capture=True)
+        options = [manifest, "--model", model, "--limit", "10"]
+        if refresh_confidence:
+            options.append("--refresh-confidence")
+        result = run_script("label_scans_gemini.py", *options, capture=True)
         if result.stdout:
             print(result.stdout.rstrip(), flush=True)
         if result.returncode != 0:
@@ -68,7 +82,7 @@ def paced_label(manifest: Path, model: str, min_interval: float, relabel_lite: b
                 continue
             raise RuntimeError(f"Labeling stopped: {message}")
         failures = 0
-        remaining = sum(r["status"] == "unlabeled" for r in rows_for(manifest))
+        remaining = sum(needs_gemini(r, refresh_confidence) for r in rows_for(manifest))
         if remaining >= pending:
             raise RuntimeError("Labeling did not advance; inspect the manifest")
         elapsed = time.monotonic() - start
@@ -88,6 +102,17 @@ def prepare(args):
         options.extend(["--corners", *args.corners])
     run_script("prepare_scans.py", *options)
     return manifest
+
+
+def run_ocr(manifest: Path, limit: int | None = None, overwrite: bool = False, include_blank: bool = False):
+    options = [manifest]
+    if limit is not None:
+        options.extend(["--limit", limit])
+    if overwrite:
+        options.append("--overwrite")
+    if include_blank:
+        options.append("--include-blank")
+    run_script("label_scans_ocr.py", *options)
 
 
 def review(manifest: Path, port: int, open_browser: bool):
@@ -131,7 +156,7 @@ def train_package(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("run", "prepare", "label", "review", "package"):
+    for name in ("run", "prepare", "label", "ocr", "review", "report", "package"):
         command = sub.add_parser(name)
         command.add_argument("--output", type=Path, required=True, help="Working directory for extracted cells")
         if name in ("run", "prepare"):
@@ -145,6 +170,11 @@ def main():
             command.add_argument("--model", choices=("gemini-3.5-flash", "gemini-3.5-flash-lite"), default="gemini-3.5-flash")
             command.add_argument("--min-interval", type=float, default=4.0, help="Minimum seconds between request starts")
             command.add_argument("--relabel-lite", action="store_true", help="Back up and reprocess Flash-Lite proposals with Flash")
+            command.add_argument("--refresh-confidence", action="store_true", help="Requery older Gemini cells without confidence; back up manifest")
+        if name == "ocr":
+            command.add_argument("--limit", type=int)
+            command.add_argument("--overwrite", action="store_true")
+            command.add_argument("--include-blank", action="store_true")
         if name in ("run", "review"):
             command.add_argument("--port", type=int, default=18765)
             command.add_argument("--no-browser", action="store_true")
@@ -153,6 +183,7 @@ def main():
             command.add_argument("--include-proposed", action="store_true")
         if name == "run":
             command.add_argument("--skip-review", action="store_true")
+            command.add_argument("--skip-ocr", action="store_true")
     train = sub.add_parser("train")
     train.add_argument("--package", type=Path, required=True)
     train.add_argument("--src-font", type=Path, required=True)
@@ -170,12 +201,16 @@ def main():
         manifest = args.output / "cells.csv"
         if not manifest.is_file():
             parser.error(f"Missing manifest: {manifest}")
+    if args.command == "report":
+        return run_script("report_scan_confidence.py", manifest)
     if args.command in ("run", "label"):
         if args.min_interval < 1:
             parser.error("--min-interval must be at least 1 second")
         if args.relabel_lite and args.model != "gemini-3.5-flash":
             parser.error("--relabel-lite requires --model gemini-3.5-flash")
-        paced_label(manifest, args.model, args.min_interval, args.relabel_lite)
+        paced_label(manifest, args.model, args.min_interval, args.relabel_lite, args.refresh_confidence)
+    if args.command == "ocr" or (args.command == "run" and not args.skip_ocr):
+        run_ocr(manifest, getattr(args, "limit", None), getattr(args, "overwrite", False), getattr(args, "include_blank", False))
     if args.command in ("run", "review") and not (args.command == "run" and args.skip_review):
         review(manifest, args.port, not args.no_browser)
     if args.command in ("run", "package"):

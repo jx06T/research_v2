@@ -15,6 +15,8 @@ FIELDS = [
     "id", "source_file", "page", "writer_id", "row", "col", "reading_index",
     "raw_path", "clean_path", "bbox", "ink_fraction", "status", "label",
     "label_source", "gemini_label", "gemini_model", "review_note",
+    "gemini_confidence", "ocr_label", "ocr_confidence", "ocr_engine", "ocr_image",
+    "ocr_raw_text", "ocr_raw_confidence", "ocr_clean_text", "ocr_clean_confidence",
 ]
 
 
@@ -214,4 +216,4 @@ def write_manifest(path: Path, records: list[dict[str, str]]) -> None:
 
 def read_manifest(path: Path) -> list[dict[str, str]]:
     with path.open("r", newline="", encoding="utf-8-sig") as stream:
-        return list(csv.DictReader(stream))
+        return [{field: row.get(field, "") or "" for field in FIELDS} for row in csv.DictReader(stream)]

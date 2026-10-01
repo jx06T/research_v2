@@ -1,6 +1,6 @@
 # 掃描稿紙資料管線
 
-這條流程將圖片或 PDF 的規則稿紙切成單格，使用 Gemini 3.5 Flash 或 Flash-Lite 產生候選標籤，覆核後匯出現有 PyTorch 訓練程式可讀的配對資料。原始掃描檔不會修改。請在專案根目錄執行以下命令。
+這條流程將圖片或 PDF 的規則稿紙切成單格，使用 Gemini 3.5 Flash 與本機 RapidOCR 分別產生候選標籤，覆核後匯出現有 PyTorch 訓練程式可讀的配對資料。原始掃描檔不會修改。請在專案根目錄執行以下命令。
 
 ## 建議使用：單一批次入口
 
@@ -12,7 +12,7 @@ python scripts/scan_workflow.py run `
   --package data/scanned_packages/1140101.npz
 ```
 
-這個入口依序呼叫下方各腳本：切格、以 Gemini 3.5 Flash 每張 10 字卡辨識、開啟本地覆核頁、產生訓練 CSV 與可攜式 NPZ。按覆核頁的「完成覆核」才會匯出。預設兩次請求開始時間至少間隔 4 秒，遇到 HTTP 429 會暫停後重試；可用 `--min-interval` 調整。若已有 `cells.csv`，會略過切格並接續尚未辨識的格位。也可以單獨使用 `prepare`、`label`、`review`、`package`、`train` 子命令。
+這個入口依序呼叫下方各腳本：切格、以 Gemini 3.5 Flash 每張 10 字卡辨識、以 RapidOCR 對每格原圖與清理圖辨識、開啟本地覆核頁、產生訓練 CSV 與可攜式 NPZ。按覆核頁的「完成覆核」才會匯出。預設兩次 Gemini 請求開始時間至少間隔 4 秒，遇到 HTTP 429 會暫停後重試；可用 `--min-interval` 調整。若已有 `cells.csv`，會略過切格並接續尚未辨識的格位。也可以單獨使用 `prepare`、`label`、`ocr`、`review`、`package`、`train` 子命令。`run` 預設要求已安裝 RapidOCR；不需 OCR 時可加 `--skip-ocr`。
 
 `run` 是新資料的完整流程。若只要接續目前的樣本覆核，不必重跑切格與 Gemini：
 
@@ -30,7 +30,7 @@ python scripts/scan_workflow.py package --output data/processed_scans/pilot `
   --package data/scanned_packages/1140101_gemini_proposals.npz --include-proposed
 ```
 
-`prepare` 只切格，`label` 只辨識未處理格位，`review` 只開覆核頁，`package` 只匯出封包，`train` 讀封包並呼叫現有訓練程式。各子命令可用 `--help` 查看參數。`run` 遇到既有 `cells.csv` 會沿用，因此不會覆蓋已覆核標籤。
+`prepare` 只切格，`label` 只呼叫 Gemini，`ocr` 只跑本機 OCR，`review` 只開覆核頁，`report` 對照人工確認字統計兩路分數，`package` 只匯出封包，`train` 讀封包並呼叫現有訓練程式。各子命令可用 `--help` 查看參數。`run` 遇到既有 `cells.csv` 會沿用，因此不會覆蓋已覆核標籤。
 
 先前若有 Flash-Lite 候選字，要改由 3.5 Flash 重辨，可用：
 
@@ -45,6 +45,7 @@ python scripts/scan_workflow.py label --output data/processed_scans/1140101 `
 
 ```powershell
 python -m pip install -r requirements.txt
+python -m pip install -r requirements-ocr.txt
 ```
 
 PDF 使用 `pypdfium2` 渲染。`.env` 可寫 `GEMINI_API_KEY = "..."`；腳本也接受同名環境變數，並優先使用環境變數。`.env` 和 `data/processed_scans/` 已列入 `.gitignore`。
@@ -88,7 +89,22 @@ python scripts/label_scans_gemini.py data/processed_scans/1140101/cells.csv
 python scripts/label_scans_gemini.py data/processed_scans/1140101/cells.csv --model gemini-3.5-flash-lite
 ```
 
-模型對每格回傳一個字或空字串。合法單字標為 `proposed`；空字串標為 `rejected`。回覆缺號、多字等不會直接寫入訓練標籤。若確定可接受模型的單字答案直接進入訓練，可加 `--auto-accept`；預設仍要求覆核。
+模型對每格回傳一個字或空字串，並回傳 1–10 的**自評視覺判讀分數**。提示詞要求只根據該格原圖和清理圖筆畫，不依上下文補字；有合理但模糊的候選字時給低分，完全無法辨認時回空字串及 1 分。合法單字標為 `proposed`；空字串標為 `rejected`。回覆缺號、多字或非法分數不會直接寫入訓練標籤。若確定可接受模型的單字答案直接進入訓練，可加 `--auto-accept`；預設仍要求覆核。自評分數不是經過校準的正確率，不能拿 8/10 當作 80% 正確率。
+
+舊的 `cells.csv` 沒有 Gemini 分數時，可重辨並補齊；執行前會自動備份 CSV，人工覆核的最終標籤與狀態不變。這會再次呼叫 API：
+
+```powershell
+python scripts/scan_workflow.py label --output data/processed_scans/pilot `
+  --model gemini-3.5-flash --refresh-confidence --min-interval 4
+```
+
+## 3a. 本機傳統 OCR 基準
+
+```powershell
+python scripts/scan_workflow.py ocr --output data/processed_scans/pilot
+```
+
+RapidOCR 的 PP-OCRv6 辨識器對每格原圖、清理圖各跑一次，不使用偵測器；只從單一漢字輸出中挑最高分候選，並保留兩次完整 OCR 原文與原始模型分數。`ocr_label` 與 `ocr_confidence` 是最後候選；分數範圍 0–1，與 Gemini 自評 1–10 **不能直接比較**，也不是校準後的正確機率。OCR 不改動 `status`、`label` 或人工覆核紀錄。已處理的格位可續跑，需重跑時加 `--overwrite`。
 
 ## 4. 覆核與匯出
 
@@ -101,7 +117,7 @@ python scripts/export_scanned_training.py data/processed_scans/1140101/cells.csv
   --output data/processed_scans/1140101/train_manifest.csv
 ```
 
-`train_manifest.csv` 只包含狀態為 `accepted`、標籤為單一漢字且圖檔存在的格位。每列包含 `id,clean_path,label,writer_id,source_file,page,row,col,label_source`。可保留重複字的不同實際筆跡。標點、空格與無法辨識的字保留在 `cells.csv` 供稽核，不加入訓練。
+`train_manifest.csv` 只包含狀態為 `accepted`、標籤為單一漢字且圖檔存在的格位。每列包含格位、書寫者、人工標籤來源，以及 Gemini/OCR 候選與分數。可保留重複字的不同實際筆跡。標點、空格與無法辨識的字保留在 `cells.csv` 供稽核，不加入訓練。
 
 若要先用未人工確認的 Gemini 候選字做探索性訓練，可另輸出一份資料，加入 `--include-proposed`；這些列的 `label_source` 仍標示為 `gemini_proposal`，方便與人工確認資料區分。
 
@@ -115,9 +131,15 @@ python scripts/scan_workflow.py review --output data/processed_scans/1140101
 
 鍵盤操作：`Enter` 接受目前候選並前進、`R` 拒絕並前進、`E` 聚焦正確字欄供修改（編輯後按 `Enter` 接受）、`←`／`→` 切換格位。換格時不會自動聚焦輸入框。人工拒絕會記為已覆核，從「待覆核」清單移除；Gemini 自動判為空字的格位仍可人工檢查。可用「已覆核」、「人工拒絕」與「模型未辨識」篩選。
 
+覆核頁同時列出兩路候選，並標示兩路是否一致。可將待覆核字依 Gemini 低分、OCR 低分或兩路不同排序，或用「Gemini 分數 ≤」只看低分／尚未評分的字。高分字若未人工檢查，仍保持 `proposed`，正式封包不會納入；若要做探索性訓練，才另行使用 `--include-proposed`。
+
+目前 `1140101` 樣本的 Gemini 分數有 430/474 格為 10 分，分數明顯集中在高端，因此**不能只看低分就宣稱其餘標籤正確**。建議先看兩路不一致與低分格，再對高分格抽樣覆核；正式訓練仍以人工確認標籤為準。
+
+人工覆核一部分後，可執行 `python scripts/scan_workflow.py report --output data/processed_scans/pilot`，查看 Gemini 1–10 與 OCR 0–1 分數各區間在**人工接受字**上的一致數。這是被選中覆核的樣本，不能直接推論整頁的準確率；決定要略過哪個分數區間前，應抽樣檢查高分字。
+
 ## GitHub 與雲端訓練
 
-CSV 只有標籤與本機絕對圖片路徑，**不能單獨在雲端訓練**。`scan_workflow.py package` 會把每張手寫字圖的 128×128 灰階像素、標籤、格位 ID 與書寫者 ID 壓縮到 `data/scanned_packages/*.npz`，另附 JSON 版本、SHA-256 校驗資訊與逐字可讀的 `_labels.jsonl`。NPZ 是資料陣列檔，不是逐張 PNG；每個標籤仍能對應其筆畫影像。這三個檔案未被 `.gitignore` 排除，可在檢查內容與大小後加入 GitHub。原始 PDF、工作中的字卡與本地快取不需要跟著同步。
+CSV 只有標籤與本機絕對圖片路徑，**不能單獨在雲端訓練**。`scan_workflow.py package` 會把每張手寫字圖的 128×128 灰階像素、標籤、格位 ID、書寫者 ID、兩路候選與分數壓縮到 `data/scanned_packages/*.npz`，另附 JSON 版本、SHA-256 校驗資訊與逐字可讀的 `_labels.jsonl`。NPZ 是資料陣列檔，不是逐張 PNG；每個標籤仍能對應其筆畫影像。這三個檔案未被 `.gitignore` 排除，可在檢查內容與大小後加入 GitHub。原始 PDF、工作中的字卡與本地快取不需要跟著同步。
 
 雲端環境拉取 GitHub 專案、安裝依賴後可直接執行：
 

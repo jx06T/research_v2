@@ -25,9 +25,9 @@ class DistributionTests(unittest.TestCase):
             Image.fromarray(pixels).save(glyph)
             manifest = root / "train_manifest.csv"
             with manifest.open("w", newline="", encoding="utf-8-sig") as stream:
-                writer = csv.DictWriter(stream, fieldnames=["id", "clean_path", "label", "writer_id", "source_file", "page", "row", "col", "label_source"])
+                writer = csv.DictWriter(stream, fieldnames=["id", "clean_path", "label", "writer_id", "source_file", "page", "row", "col", "label_source", "gemini_label", "gemini_confidence", "gemini_model", "ocr_label", "ocr_confidence", "ocr_engine"])
                 writer.writeheader()
-                writer.writerow({"id": "one", "clean_path": str(glyph), "label": "同", "writer_id": "writer_a", "source_file": "private.pdf", "page": "1", "row": "1", "col": "1", "label_source": "human_review"})
+                writer.writerow({"id": "one", "clean_path": str(glyph), "label": "同", "writer_id": "writer_a", "source_file": "private.pdf", "page": "1", "row": "1", "col": "1", "label_source": "human_review", "gemini_label": "同", "gemini_confidence": "7", "gemini_model": "gemini-3.5-flash", "ocr_label": "同", "ocr_confidence": "0.8123", "ocr_engine": "rapidocr-test"})
             package = root / "portable.npz"
             pack(manifest, package)
             self.assertTrue(package.with_suffix(".json").is_file())
@@ -36,6 +36,7 @@ class DistributionTests(unittest.TestCase):
             with destination.open(encoding="utf-8-sig", newline="") as stream:
                 row = next(csv.DictReader(stream))
             self.assertEqual((row["label"], row["writer_id"]), ("同", "writer_a"))
+            self.assertEqual((row["gemini_confidence"], row["ocr_confidence"]), ("7", "0.8123"))
             with Image.open(row["clean_path"]) as image:
                 np.testing.assert_array_equal(np.asarray(image), pixels)
 
