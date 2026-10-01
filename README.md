@@ -1,5 +1,9 @@
 # Font GAN - 中文字體風格轉換 (v2)
 
+## 真實掃描稿紙訓練
+
+掃描 PDF／圖片裁字、Gemini 3.5 Flash 辨識、人工覆核及接入現有訓練流程，請見 [SCANNED_TRAINING.md](SCANNED_TRAINING.md)。
+
 本專案是基於 PyTorch 實作的字體風格轉換 GAN 模型。在 v2 架構中，我們捨棄了龐大的單一 Jupyter Notebook 開發模式，改為**模組化架構**，並高度整合 **Colab + Cloudflare Tunnel + VS Code** 的遠端開發流程。
 
 ---

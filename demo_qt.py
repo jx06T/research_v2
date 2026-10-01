@@ -2,12 +2,14 @@ import sys
 import os
 import csv
 import glob
+import re
 import torch
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QHBoxLayout, QTextEdit, QLabel, QSlider, 
-                             QListWidget, QAbstractItemView, QScrollArea, QCheckBox, QLayout)
+                             QListWidget, QListWidgetItem, QAbstractItemView, QScrollArea, QCheckBox,
+                             QComboBox, QPushButton, QLayout)
 from PyQt6.QtCore import Qt, QPoint, QRect, QSize, QTimer
 from PyQt6.QtGui import QImage, QPixmap
 from src.models.generator.dynamic_gen import DynamicGenerator
@@ -47,24 +49,26 @@ try:
             for model_path in found_models:
                 filename = os.path.basename(model_path)
                 short_run_id = run_id.split('_')[-1] if '_' in run_id else run_id
-                
-                if "epoch" in filename:
-                    epoch_str = filename.split("epoch_")[-1].replace(".pth", "")
-                    display_name = f"[{exp_name}] {short_run_id} (Ep {epoch_str})"
-                elif "latest" in filename:
-                    display_name = f"[{exp_name}] {short_run_id} (Latest)"
-                else:
-                    display_name = f"[{exp_name}] {short_run_id}"
+                epoch_match = re.search(r"_epoch_(\d+)\.pth$", filename)
+                is_latest = filename == f"G_latest_{run_id}.pth"
+                epoch = int(epoch_match.group(1)) if epoch_match else None
+                version = f"Ep {epoch}" if epoch is not None else "Latest" if is_latest else filename
+                image_size = int(row.get("image_size", 64)) if str(row.get("image_size")).isdigit() else 64
+                btn_size = int(row.get("bottleneck_size", 4)) if str(row.get("bottleneck_size")).isdigit() else 4
+                display_name = f"[{exp_name}] {short_run_id} · img{image_size} / btn{btn_size} · {version}"
                 
                 EXPERIMENTS[display_name] = {
                     "model_path": model_path,
                     "target_font": row.get("tgt_font") if row.get("tgt_font") not in ["", "N/A", None] else "data/fonts/kaiu.ttf",
                     "source_font": row.get("src_font") if row.get("src_font") not in ["", "N/A", None] else "data/fonts/NotoSansTC-Regular.ttf",
-                    "image_size": int(row.get("image_size", 64)) if str(row.get("image_size")).isdigit() else 64,
-                    "bottleneck_size": int(row.get("bottleneck_size", 4)) if str(row.get("bottleneck_size")).isdigit() else 4,
+                    "image_size": image_size,
+                    "bottleneck_size": btn_size,
                     "nz": int(row.get("nz", 256)) if str(row.get("nz")).isdigit() else 256,
                     "nc": int(row.get("nc", 1)) if str(row.get("nc")).isdigit() else 1,
-                    "gen_type": row.get("gen_type", "dynamic")
+                    "gen_type": (row.get("gen_type") or "dynamic").strip().lower(),
+                    "run_id": run_id,
+                    "epoch": epoch,
+                    "is_latest": is_latest,
                 }
 except Exception as e:
     print(f"無法讀取 model_registry.csv 或尚無紀錄: {e}")
@@ -79,7 +83,10 @@ if not EXPERIMENTS:
         "bottleneck_size": 4,
         "nz": 256,
         "nc": 1,
-        "gen_type": "dynamic"
+        "gen_type": "dynamic",
+        "run_id": "fallback",
+        "epoch": None,
+        "is_latest": True,
     }
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -221,9 +228,6 @@ class FontGenApp(QMainWindow):
         self.update_timer.timeout.connect(self._do_update_generation)
         
         self.init_ui()
-        # 預設選取第一個模型
-        if EXPERIMENTS:
-            self.model_list.setCurrentRow(0)
 
     def init_ui(self):
         main_widget = QWidget()
@@ -233,14 +237,81 @@ class FontGenApp(QMainWindow):
         ctrl_box = QVBoxLayout()
         ctrl_box.setSpacing(8)
 
-        # 改為多選清單
-        ctrl_box.addWidget(QLabel("<b>模型版本 (可按 Ctrl 多選):</b>"))
+        ctrl_box.addWidget(QLabel("<b>模型版本（勾選要比較的模型）:</b>"))
+
+        size_filter_row = QHBoxLayout()
+        size_filter_row.addWidget(QLabel("圖像尺寸"))
+        self.image_filter = QComboBox()
+        self.image_filter.addItem("全部", None)
+        for size in sorted({config["image_size"] for config in EXPERIMENTS.values()}):
+            self.image_filter.addItem(str(size), size)
+        self.image_filter.currentIndexChanged.connect(self.filter_model_list)
+        size_filter_row.addWidget(self.image_filter)
+        size_filter_row.addWidget(QLabel("btn size"))
+        self.btn_filter = QComboBox()
+        self.btn_filter.addItem("全部", None)
+        for size in sorted({config["bottleneck_size"] for config in EXPERIMENTS.values()}):
+            self.btn_filter.addItem(str(size), size)
+        self.btn_filter.currentIndexChanged.connect(self.filter_model_list)
+        size_filter_row.addWidget(self.btn_filter)
+        ctrl_box.addLayout(size_filter_row)
+
+        architecture_filter_row = QHBoxLayout()
+        architecture_filter_row.addWidget(QLabel("架構"))
+        self.arch_filter = QComboBox()
+        self.arch_filter.addItem("全部", None)
+        for arch in sorted({config["gen_type"] for config in EXPERIMENTS.values()}):
+            self.arch_filter.addItem(arch, arch)
+        self.arch_filter.currentIndexChanged.connect(self.filter_model_list)
+        architecture_filter_row.addWidget(self.arch_filter)
+        architecture_filter_row.addWidget(QLabel("nz"))
+        self.nz_filter = QComboBox()
+        self.nz_filter.addItem("全部", None)
+        for nz in sorted({config["nz"] for config in EXPERIMENTS.values()}):
+            self.nz_filter.addItem(str(nz), nz)
+        self.nz_filter.currentIndexChanged.connect(self.filter_model_list)
+        architecture_filter_row.addWidget(self.nz_filter)
+        ctrl_box.addLayout(architecture_filter_row)
+
+        self.version_filter = QComboBox()
+        self.version_filter.addItem("所有版本", "all")
+        self.version_filter.addItem("只顯示 Latest", "latest")
+        self.version_filter.addItem("只顯示最高輪次", "highest")
+        self.version_filter.currentIndexChanged.connect(self.filter_model_list)
+        ctrl_box.addWidget(self.version_filter)
+
         self.model_list = QListWidget()
-        self.model_list.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.model_list.addItems(EXPERIMENTS.keys())
-        self.model_list.itemSelectionChanged.connect(self.load_selected_models)
-        self.model_list.setMaximumHeight(200)
+        self.model_list.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
+        self.highest_epoch_by_run = {}
+        for config in EXPERIMENTS.values():
+            if config["epoch"] is not None:
+                run_id = config["run_id"]
+                self.highest_epoch_by_run[run_id] = max(
+                    config["epoch"], self.highest_epoch_by_run.get(run_id, -1)
+                )
+        for name in EXPERIMENTS:
+            item = QListWidgetItem(name)
+            config = EXPERIMENTS[name]
+            item.setToolTip(f"{name}\n架構: {config['gen_type']} · nz: {config['nz']}")
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            self.model_list.addItem(item)
+        self.model_list.itemChanged.connect(self.load_selected_models)
+        self.model_list.setMinimumHeight(200)
         ctrl_box.addWidget(self.model_list)
+
+        selection_row = QHBoxLayout()
+        check_visible = QPushButton("勾選顯示項目")
+        check_visible.clicked.connect(lambda: self.set_visible_models_checked(True))
+        uncheck_visible = QPushButton("清除全部勾選")
+        uncheck_visible.clicked.connect(lambda: self.set_visible_models_checked(False, visible_only=False))
+        selection_row.addWidget(check_visible)
+        selection_row.addWidget(uncheck_visible)
+        ctrl_box.addLayout(selection_row)
+        self.model_count_label = QLabel()
+        self.model_count_label.setWordWrap(True)
+        ctrl_box.addWidget(self.model_count_label)
+        self.filter_model_list()
 
         ctrl_box.addWidget(QLabel("<b>文字比例:</b>"))
         self.scale_value_label = QLabel("0.93")
@@ -316,13 +387,60 @@ class FontGenApp(QMainWindow):
         for block in self.blocks:
             block.update_visibility(self.chk_label.isChecked(), self.chk_src.isChecked(), self.chk_gt.isChecked(), self.chk_gt_bottom.isChecked(), self.pixel_size)
 
-    def load_selected_models(self):
-        selected_items = self.model_list.selectedItems()
-        self.active_models = []
-        
-        print("重新加載選取的模型...")
-        for item in selected_items:
+    def filter_model_list(self, _index=None):
+        image_size = self.image_filter.currentData()
+        btn_size = self.btn_filter.currentData()
+        architecture = self.arch_filter.currentData()
+        nz = self.nz_filter.currentData()
+        version = self.version_filter.currentData()
+        for index in range(self.model_list.count()):
+            item = self.model_list.item(index)
+            config = EXPERIMENTS[item.text()]
+            matches_params = (
+                (image_size is None or config["image_size"] == image_size)
+                and (btn_size is None or config["bottleneck_size"] == btn_size)
+                and (architecture is None or config["gen_type"] == architecture)
+                and (nz is None or config["nz"] == nz)
+            )
+            matches_version = (
+                version == "all"
+                or (version == "latest" and config["is_latest"])
+                or (version == "highest" and config["epoch"] is not None
+                    and config["epoch"] == self.highest_epoch_by_run.get(config["run_id"]))
+            )
+            item.setHidden(not (matches_params and matches_version))
+        self.update_model_count()
+
+    def update_model_count(self):
+        items = [self.model_list.item(index) for index in range(self.model_list.count())]
+        visible = sum(not item.isHidden() for item in items)
+        checked = sum(item.checkState() == Qt.CheckState.Checked for item in items)
+        loaded = len(self.active_models)
+        note = "載入失敗請查看終端機" if loaded < checked else "隱藏的勾選仍有效"
+        self.model_count_label.setText(f"顯示 {visible} · 勾選 {checked} · 載入 {loaded}\n{note}")
+
+    def set_visible_models_checked(self, checked, visible_only=True):
+        self.model_list.blockSignals(True)
+        try:
+            for index in range(self.model_list.count()):
+                item = self.model_list.item(index)
+                if not visible_only or not item.isHidden():
+                    item.setCheckState(Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked)
+        finally:
+            self.model_list.blockSignals(False)
+        self.load_selected_models()
+
+    def load_selected_models(self, _item=None):
+        checked_items = [self.model_list.item(index) for index in range(self.model_list.count())
+                         if self.model_list.item(index).checkState() == Qt.CheckState.Checked]
+        loaded_models = dict(self.active_models)
+        active_models = []
+
+        for item in checked_items:
             name = item.text()
+            if name in loaded_models:
+                active_models.append((name, loaded_models[name]))
+                continue
             try:
                 config = EXPERIMENTS[name]
                 
@@ -341,7 +459,7 @@ class FontGenApp(QMainWindow):
                 model.load_state_dict(torch.load(config["model_path"], map_location=DEVICE))
                 model.eval()
                 
-                self.active_models.append((name, {
+                active_models.append((name, {
                     "model": model,
                     "cfg": cfg,
                     "src_font": config["source_font"],
@@ -349,12 +467,15 @@ class FontGenApp(QMainWindow):
                 }))
             except Exception as e:
                 print(f"無法載入模型 {name}: {e}")
-                
+
+        self.active_models = active_models
+        self.update_model_count()
         # 檢查選取的組合是否改變
         current_names = [m[0] for m in self.active_models]
         if current_names != self.last_active_names:
-            self.last_text = "" 
+            self.last_text = ""
             self.last_active_names = current_names
+            self.inference_cache.clear()
             self.update_timer.start(100)
 
     def update_generation(self):

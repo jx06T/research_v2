@@ -20,11 +20,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("manifest", type=Path)
     parser.add_argument("--output", type=Path, default=Path("data/processed_scans/train_manifest.csv"))
+    parser.add_argument("--include-proposed", action="store_true", help="Also use unreviewed Gemini single-character proposals")
     args = parser.parse_args()
     rows = read_manifest(args.manifest)
     selected = []
     for row in rows:
-        if row["status"] != "accepted" or not is_han(row["label"]):
+        if row["status"] != "accepted" and not (args.include_proposed and row["status"] == "proposed"):
+            continue
+        if not is_han(row["label"]):
             continue
         if not Path(row["clean_path"]).is_file():
             raise FileNotFoundError(row["clean_path"])

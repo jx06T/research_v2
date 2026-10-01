@@ -1,0 +1,11 @@
+{
+  "format_version": 1,
+  "count": 433,
+  "unique_characters": 232,
+  "size": 128,
+  "writers": [
+    "sample_1140101"
+  ],
+  "sha256": "cac5e475247ab0ed2347f6aad08da1a3015d4c434111b2d64d6629d851ddc117",
+  "contains_unreviewed": true
+}

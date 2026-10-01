@@ -9,7 +9,6 @@ import time
 import unicodedata
 import urllib.error
 import urllib.request
-from io import BytesIO
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
@@ -126,7 +125,7 @@ def main():
     card_dir = args.manifest.parent / "cards"
     for start in range(0, len(pending), args.card_size):
         batch = pending[start:start + args.card_size]
-        card = card_dir / f"card_{start // args.card_size + 1:04d}.png"
+        card = card_dir / f"card_{batch[0]['id']}.png"
         make_card(batch, card)
         if args.cards_only:
             print(f"Card: {card}")

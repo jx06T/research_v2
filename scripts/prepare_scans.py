@@ -17,6 +17,7 @@ def main():
     parser.add_argument("--rows", type=int, default=22)
     parser.add_argument("--size", type=int, default=128)
     parser.add_argument("--writer-id", default="unknown")
+    parser.add_argument("--overwrite", action="store_true", help="Replace existing crops and labels")
     parser.add_argument("--corners", type=float, nargs=8, metavar=("UL_X", "UL_Y", "UR_X", "UR_Y", "LR_X", "LR_Y", "LL_X", "LL_Y"))
     args = parser.parse_args()
     if args.cols < 1 or args.rows < 1 or args.size < 16:
@@ -26,17 +27,20 @@ def main():
         parser.error("No input files found")
     if args.corners and len(paths) != 1:
         parser.error("--corners requires one input file")
+    manifest = args.output / "cells.csv"
+    if manifest.exists() and not args.overwrite:
+        parser.error(f"{manifest} exists; use a new --output or --overwrite to replace labels")
     records = []
     for path in paths:
         for page, image in load_pages(path):
-            corners = list(zip(args.corners[::2], args.corners[1::2])) if args.corners else auto_corners(image, args.cols, args.rows)
             page_dir = args.output / path.stem / f"page_{page:03d}"
             page_dir.mkdir(parents=True, exist_ok=True)
+            image.save(page_dir / "page_preview.png")
+            corners = list(zip(args.corners[::2], args.corners[1::2])) if args.corners else auto_corners(image, args.cols, args.rows)
             (page_dir / "calibration.json").write_text(json.dumps({"source": str(path.resolve()), "page": page, "corners": corners, "cols": args.cols, "rows": args.rows, "rendered_size": image.size}, ensure_ascii=False, indent=2), encoding="utf-8")
             page_records = extract_page(image, path, page, page_dir, corners, args.cols, args.rows, args.writer_id, args.size)
             records.extend(page_records)
             print(f"{path.name} page {page}: {len(page_records)} cells, overlay: {page_dir / 'grid_overlay.png'}")
-    manifest = args.output / "cells.csv"
     write_manifest(manifest, records)
     print(f"Manifest: {manifest}; blank={sum(r['status'] == 'blank' for r in records)}, candidates={sum(r['status'] == 'unlabeled' for r in records)}")
 
